@@ -1,0 +1,24 @@
+[package]
+name = "npwg"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["Volker Schwaberow <volker@schwaberow.de>"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rand = { version = "0.8.5", features = ["std", "small_rng"] }
+regex = "1.10.4"
+chacha20 = { version = "0.9.1", features = ["std", "zeroize"] }
+clap = { version = "4.5.4", features = ["cargo", "env", "derive"] }
+zeroize = "1.7.0"
+tokio = { version = "1.37.0", features = ["full"] }
+dashmap = "5.5.3"
+rand_distr = "0.4"
+
+[profile.release]
+opt-level = 3
+debug = false
+strip = true
+lto = false
