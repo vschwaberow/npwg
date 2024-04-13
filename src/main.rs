@@ -123,7 +123,7 @@ impl PasswordGeneratorConfig {
 /// The generated password as a string.
 async fn generate_password(config: &PasswordGeneratorConfig) -> String {
     // Create a random number generator.
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rngs::OsRng;
     // Create a string to store the generated password.
     let mut password = String::with_capacity(config.length);
     // Create a variable to store the previous character.
