@@ -55,6 +55,7 @@ struct PasswordGeneratorConfig {
     excluded_chars: HashSet<char>, // The characters to exclude from the generated passwords.
     included_chars: HashSet<char>, // The characters to include in the generated passwords.
     num_passwords: usize,          // The number of passwords to generate.
+    avoid_repetition: bool,        // Avoid repetition of characters in the generated passwords.
 }
 
 /// Statistics about the generated passwords.
@@ -88,6 +89,7 @@ impl PasswordGeneratorConfig {
             excluded_chars: HashSet::new(),
             included_chars: HashSet::new(),
             num_passwords: 1,
+            avoid_repetition: false,
         }
     }
 
@@ -121,9 +123,11 @@ impl PasswordGeneratorConfig {
 /// The generated password as a string.
 async fn generate_password(config: &PasswordGeneratorConfig) -> String {
     // Create a random number generator.
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rngs::OsRng;
     // Create a string to store the generated password.
     let mut password = String::with_capacity(config.length);
+    // Create a variable to store the previous character.
+    let mut prev_character = None;
 
     // Generate a password with the specified length.
     while password.len() < config.length {
@@ -133,9 +137,12 @@ async fn generate_password(config: &PasswordGeneratorConfig) -> String {
         if !config.excluded_chars.contains(&candidate_char)
             // Check if the included characters are empty or the character is in the included characters.
             && (config.included_chars.is_empty() || config.included_chars.contains(&candidate_char))
+            && (!config.avoid_repetition || prev_character != Some(candidate_char))
         {
             // Add the character to the password.
             password.push(candidate_char);
+            // Update the previous character.
+            prev_character = Some(candidate_char);
         }
     }
     // Return the generated password.
@@ -249,6 +256,11 @@ async fn main() {
                 .required(false)
                 .default_value("false"),
         )
+        .arg(
+            arg!(-r --"avoid-repeating" "Avoid repeating characters in the generated passwords")
+                .required(false)
+                .default_value("false"),
+        )
         .get_matches();
 
     // Create a new configuration with the specified values.
@@ -313,6 +325,12 @@ async fn main() {
     if let Some(num_passwords) = matches.get_one::<usize>("num") {
         // Update the configuration with the specified number of passwords.
         config.num_passwords = *num_passwords;
+    }
+
+    // Update the configuration with the specified values.
+    if let Some(avoid_repetition) = matches.get_one::<bool>("avoid-repeating") {
+        // Update the configuration with the specified value for avoiding repetition.
+        config.avoid_repetition = *avoid_repetition;
     }
 
     // Validate the configuration.
