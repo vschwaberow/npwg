@@ -14,23 +14,6 @@ use zeroize::Zeroize;
 
 /// The character sets used to generate the passwords.
 /// The first element of each tuple is the name of the character set,
-/// and the second element is the characters in the set.
-/// The character sets are:
-/// - symbol1: #%&?@
-/// - symbol2: !#$%&*+-./:=?@~
-/// - symbol3: !"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~
-/// - digit: 0123456789
-/// - lowerletter: abcdefghijklmnopqrstuvwxyz
-/// - upperletter: ABCDEFGHIJKLMNOPQRSTUVWXYZ
-/// - shell: !"$&`'
-/// - homoglyph1: 71lI|
-/// - homoglyph2: 2Z
-/// - homoglyph3: 6G
-/// - homoglyph4: :;
-/// - homoglyph5: ^`'
-/// - homoglyph6: !|
-/// - homoglyph7: <({[]})>
-/// - homoglyph8: ~-
 /// The homoglyphs are characters that look similar to other characters.
 /// For example, the character 'l' looks similar to the character '1'.
 /// The homoglyphs are used to avoid confusion between similar characters.
@@ -50,6 +33,18 @@ const DEFINE: &[(&str, &str)] = &[
     ("homoglyph6", "!|"),
     ("homoglyph7", "<({[]})>"),
     ("homoglyph8", "~-"),
+    ("slashes", "/\\"),
+    ("brackets", "[]{}()"),
+    ("punctuation", "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"),
+    ("all", "#%&?@!#$%&*+-./:=?@~0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~!\"$&`'71lI|2Z6G:;^`'!|<({[]})>~-/\\[]{}()!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"),
+    ("allprint", "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"),
+    ("allprintnoquote", "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!#$%&()*+,-./:;<=>?@[\\]^_`{|}~"),
+    ("allprintnospace", "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"),
+    ("allprintnospacequote", "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!#$%&()*+,-./:;<=>?@[\\]^_`{|}~"),
+    ("allprintnospacequotebracket", "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!#$%&()*+,-./:;<=>?@[\\]^_`{|}~[]{}()"),
+    ("allprintnospacequotebracketpunctuation", "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!#$%&()*+,-./:;<=>?@[\\]^_`{|}~[]{}()!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"),
+    ("allprintnospacequotebracketpunctuationslashes", "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!#$%&()*+,-.:;<=>?@[\\]^_`{|}~[]{}()!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"),
+    ("allprintnospacequotebracketpunctuationslashesshell", "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ#$%&()*+,-.:;<=>?@[\\]^_`{|}~[]"),
 ];
 
 /// Configuration for the password generator.
