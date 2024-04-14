@@ -333,7 +333,7 @@ dependencies = [
 
 [[package]]
 name = "npwg"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "chacha20",
  "clap",

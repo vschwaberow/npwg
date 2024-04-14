@@ -1,10 +1,11 @@
 [package]
 name = "npwg"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 license = "MIT"
 authors = ["Volker Schwaberow <volker@schwaberow.de>"]
 description = "Securely generate random passwords"
+repository = "https://github.com/vschwaberow/npwg"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
