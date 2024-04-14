@@ -242,7 +242,7 @@ async fn main() {
         .arg(
             arg!(-a --allowed <STRING> "Allowed character sets (comma-separated)")
                 .required(false)
-                .default_value("symbol1,symbol2,digit,lowerletter,upperletter,shell,homoglyph1,homoglyph2,homoglyph3,homoglyph4,homoglyph5,homoglyph6,homoglyph7,homoglyph8,slashes,brackets,punctuation,all,allprint,allprintnoquote,allprintnospace,allprintnospacequote,allprintnospacequotebracket,allprintnospacequotebracketpunctuation,allprintnospacequotebracketpunctuationslashes,allprintnospacequotebracketpunctuationslashesshell"),
+                .default_value("symbol1,symbol2,digit,lowerletter,upperletter"),
         )
         .arg(arg!(-e --exclude <STRING> "Excluded characters (comma-separated)").required(false))
         .arg(arg!(-i --include <STRING> "Included characters (comma-separated)").required(false))
