@@ -13,7 +13,7 @@ repository = "https://github.com/vschwaberow/npwg"
 rand = { version = "0.8.5", features = ["std", "small_rng"] }
 regex = "1.10.4"
 chacha20 = { version = "0.9.1", features = ["std", "zeroize"] }
-clap = { version = "4.5.4", features = ["cargo", "env", "derive"] }
+clap = { version = "4.5.7", features = ["cargo", "env", "derive"] }
 zeroize = "1.8.1"
 tokio = { version = "1.38.0", features = ["full"] }
 dashmap = "5.5.3"
