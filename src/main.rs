@@ -225,7 +225,7 @@ async fn show_stats(passwords: &[String]) -> PasswordQuality {
 /// * `num_words` - The number of words in the passphrase.
 /// # Returns
 /// The generated passphrase as a string.
-fn generate_diceware_passphrase(wordlist: &[String], num_words: usize) -> String {
+async fn generate_diceware_passphrase(wordlist: &[String], num_words: usize) -> String {
     let mut rng = rand::thread_rng();
     let die = rand::distributions::Uniform::from(0..wordlist.len());
     (0..num_words)
