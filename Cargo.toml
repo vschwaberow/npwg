@@ -1,6 +1,6 @@
 [package]
 name = "npwg"
-version = "0.1.6"
+version = "0.2.0"
 edition = "2021"
 license = "MIT"
 authors = ["Volker Schwaberow <volker@schwaberow.de>"]
@@ -20,6 +20,7 @@ dashmap = "5.5.3"
 rand_distr = "0.4"
 dirs = "5.0.1"
 reqwest = { version = "0.12.5", features = ["blocking"] }
+futures = "0.3.30"
 
 [profile.release]
 opt-level = 3
