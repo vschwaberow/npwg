@@ -10,7 +10,15 @@ use rand::{Rng, SeedableRng};
 use rand_distr::Distribution as StatisticsDistribution;
 use rand_distr::Normal;
 use std::collections::HashSet;
+use std::fs::{self, File};
+use std::io::Write;
 use zeroize::Zeroize;
+
+/// The URL of the Diceware wordlist.
+const DICEWARE_URL: &str = "https://www.eff.org/files/2016/07/18/eff_large_wordlist.txt";
+
+/// The filename of the Diceware wordlist.
+const DICEWARE_FILENAME: &str = "eff_large_wordlist.txt";
 
 /// The character sets used to generate the passwords.
 /// The first element of each tuple is the name of the character set,
@@ -47,6 +55,12 @@ const DEFINE: &[(&str, &str)] = &[
     ("allprintnospacequotebracketpunctuationslashesshell", "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ#$%&()*+,-.:;<=>?@[\\]^_`{|}~[]"),
 ];
 
+#[derive(Debug, Clone, PartialEq)]
+enum PasswordGeneratorMode {
+    Password,
+    Diceware,
+}
+
 /// Configuration for the password generator.
 #[derive(Debug, Clone)]
 struct PasswordGeneratorConfig {
@@ -56,6 +70,8 @@ struct PasswordGeneratorConfig {
     included_chars: HashSet<char>, // The characters to include in the generated passwords.
     num_passwords: usize,          // The number of passwords to generate.
     avoid_repetition: bool,        // Avoid repetition of characters in the generated passwords.
+    mode: PasswordGeneratorMode,   // The mode of the password generator.
+    diceware_words: usize,         // The number of words in the Diceware passphrase.
 }
 
 /// Statistics about the generated passwords.
@@ -90,6 +106,8 @@ impl PasswordGeneratorConfig {
             included_chars: HashSet::new(),
             num_passwords: 1,
             avoid_repetition: false,
+            mode: PasswordGeneratorMode::Password,
+            diceware_words: 0,
         }
     }
 
@@ -201,6 +219,21 @@ async fn show_stats(passwords: &[String]) -> PasswordQuality {
     }
 }
 
+/// Generates a diceware passphrase
+/// # Arguments
+/// * `wordlist` - The list of words to choose from.
+/// * `num_words` - The number of words in the passphrase.
+/// # Returns
+/// The generated passphrase as a string.
+fn generate_diceware_passphrase(wordlist: &[String], num_words: usize) -> String {
+    let mut rng = rand::thread_rng();
+    let die = rand::distributions::Uniform::from(0..wordlist.len());
+    (0..num_words)
+        .map(|_| wordlist[die.sample(&mut rng)].clone())
+        .collect::<Vec<String>>()
+        .join(" ")
+}
+
 /// Generates the specified number of passwords based on the given configuration.
 /// # Arguments
 /// * `config` - The configuration for generating the passwords.
@@ -260,6 +293,17 @@ async fn main() {
             arg!(-r --"avoid-repeating" "Avoid repeating characters in the generated passwords")
                 .required(false)
                 .default_value("false"),
+        )
+        .arg(
+            arg!(-d --diceware "Use Diceware to generate passphrase instead of password")
+                .required(false)
+                .default_value("false"),
+        )
+        .arg(
+            arg!(-w --words <usize> "Number of words in the Diceware passphrase (default: 6)")
+                .required(false)
+                .value_parser(value_parser!(usize))
+                .default_value("6"),
         )
         .get_matches();
 
@@ -340,13 +384,83 @@ async fn main() {
         std::process::exit(1);
     });
 
-    // Generate the passwords based on the configuration.
-    let mut passwords = generate_passwords(&config).await;
+    // Diceware mode
+    if let Some(diceware) = matches.get_one::<bool>("diceware") {
+        if *diceware {
+            config.mode = PasswordGeneratorMode::Diceware;
+        }
+    }
+    // Diceware num words arguments
+    if let Some(diceware_words) = matches.get_one::<usize>("words") {
+        config.diceware_words = *diceware_words;
+    }
 
-    // Iterate over the generated passwords.
-    for (_i, password) in passwords.iter().enumerate() {
-        // Print the generated password.
-        println!("{}", password);
+    let mut passwords = Vec::new();
+
+    // Diceware passphrase generation
+    if config.mode == PasswordGeneratorMode::Diceware {
+        // check if wordlist is available locally
+        let home = dirs::home_dir();
+        let wordlist = match home {
+            Some(path) => {
+                // use a string with ".npwg" and the const DICEWARE_FILENAME
+                let wordlist_path = path.join(".npwg/").join(DICEWARE_FILENAME);
+                if wordlist_path.exists() {
+                    let wordlist = std::fs::read_to_string(wordlist_path).unwrap();
+
+                    wordlist
+                        .lines()
+                        .filter_map(|line| line.split_once('\t'))
+                        .map(|(_, word)| word.to_string())
+                        .collect::<Vec<String>>()
+                } else {
+                    eprintln!("Error: Wordlist not found at {:?}", wordlist_path);
+                    eprintln!("Downloading wordlist from {}", DICEWARE_URL);
+                    let response = reqwest::get(DICEWARE_URL).await;
+                    match response {
+                        Ok(response) => {
+                            let download = response.text().await.unwrap();
+                            fs::create_dir_all(path.join(".npwg/")).unwrap();
+                            let mut file = File::create(&wordlist_path).unwrap();
+                            file.write_all(download.as_bytes()).unwrap();
+                        }
+                        Err(e) => {
+                            eprintln!("Error: {}", e);
+                            return;
+                        }
+                    }
+                    eprintln!("Wordlist downloaded to {:?}", &wordlist_path);
+                    eprintln!("Re-run the program to generate a diceware passphrase");
+                    return;
+                }
+            }
+            None => {
+                eprintln!("Error: Home directory not found");
+                return;
+            }
+        };
+
+        passwords = vec![generate_diceware_passphrase(
+            &wordlist,
+            config.diceware_words,
+        )];
+
+        // Iterate over the generated passwords.
+        for (_i, password) in passwords.iter().enumerate() {
+            // Print the generated password.
+            println!("{}", password);
+        }
+    }
+
+    if config.mode == PasswordGeneratorMode::Password {
+        // Generate the passwords based on the configuration.
+        passwords = generate_passwords(&config).await;
+
+        // Iterate over the generated passwords.
+        for (_i, password) in passwords.iter().enumerate() {
+            // Print the generated password.
+            println!("{}", password);
+        }
     }
     // If the 'stats' argument is specified, show statistics about the generated passwords.
     if let Some(stats) = matches.get_one::<bool>("stats") {
