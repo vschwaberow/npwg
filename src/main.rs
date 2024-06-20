@@ -201,6 +201,21 @@ async fn show_stats(passwords: &[String]) -> PasswordQuality {
     }
 }
 
+/// Generates a diceware passphrase
+/// # Arguments
+/// * `wordlist` - The list of words to choose from.
+/// * `num_words` - The number of words in the passphrase.
+/// # Returns
+/// The generated passphrase as a string.
+fn generate_diceware_passphrase(wordlist: &[String], num_words: usize) -> String {
+    let mut rng = rand::thread_rng();
+    let die = rand::distributions::Uniform::from(0..wordlist.len());
+    (0..num_words)
+        .map(|_| wordlist[die.sample(&mut rng)].clone())
+        .collect::<Vec<String>>()
+        .join(" ")
+}
+
 /// Generates the specified number of passwords based on the given configuration.
 /// # Arguments
 /// * `config` - The configuration for generating the passwords.
