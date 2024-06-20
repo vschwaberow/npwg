@@ -5,6 +5,7 @@
 // Copyright (c) 2022 Volker Schwaberow
 
 use clap::{arg, command, value_parser};
+use futures::future::join_all;
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use rand_distr::Distribution as StatisticsDistribution;
@@ -245,9 +246,10 @@ async fn generate_passwords(config: &PasswordGeneratorConfig) -> Vec<String> {
     // Generate the specified number of passwords.
     for _ in 0..config.num_passwords {
         // Generate a password and add it to the vector.
-        passwords.push(generate_password(config).await);
+        passwords.push(generate_password(config));
     }
     // Return the generated passwords.
+    let passwords = join_all(passwords).await;
     passwords
 }
 
@@ -443,12 +445,12 @@ async fn main() {
         passwords = vec![generate_diceware_passphrase(
             &wordlist,
             config.diceware_words,
-        )];
+        ).await];
 
         // Iterate over the generated passwords.
         for (_i, password) in passwords.iter().enumerate() {
             // Print the generated password.
-            println!("{}", password);
+            println!("{:?}", password);
         }
     }
 
@@ -523,6 +525,54 @@ mod tests {
         config.set_allowed_chars_default();
         let password = generate_password(&config).await;
         assert_eq!(password.len(), 8);
+    }
+
+    /// Test the `generate_diceware_passphrase` function.
+    /// The test generates a Diceware passphrase and checks if the number of words in the passphrase
+    /// is equal to the number of words specified in the configuration.
+    #[tokio::test]
+    async fn test_generate_diceware_passphrase() {
+        let wordlist = vec![
+            "apple".to_string(),
+            "banana".to_string(),
+            "cherry".to_string(),
+            "date".to_string(),
+            "elderberry".to_string(),
+        ];
+
+        let passphrase = generate_diceware_passphrase(&wordlist, 4).await;
+
+        let words: Vec<&str> = passphrase.split_whitespace().collect();
+        assert_eq!(words.len(), 4);
+        for word in words {
+            assert!(wordlist.contains(&word.to_string()));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_generate_diceware_passphrase_with_stats() {
+        let wordlist = vec![
+            "apple".to_string(),
+            "banana".to_string(),
+            "cherry".to_string(),
+            "date".to_string(),
+            "elderberry".to_string(),
+        ];
+
+        let passphrase = generate_diceware_passphrase(&wordlist, 4).await;
+
+        let words: Vec<&str> = passphrase.split_whitespace().collect();
+        assert_eq!(words.len(), 4);
+        for word in words {
+            assert!(wordlist.contains(&word.to_string()));
+        }
+
+        let pq = show_stats(&vec![passphrase]).await;
+
+        assert!(pq.mean.is_finite());
+        assert!(pq.variance.is_finite());
+        assert!(pq.skewness.is_finite());
+        assert!(pq.kurtosis.is_finite());
     }
 
     /// Test the `generate_passwords` function.
