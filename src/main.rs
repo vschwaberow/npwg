@@ -276,6 +276,16 @@ async fn main() {
                 .required(false)
                 .default_value("false"),
         )
+        .arg(
+            arg!(-d --diceware "Use Diceware to generate passphrase instead of password")
+                .required(false)
+                .default_value("false"),
+        )
+        .arg(
+            arg!(-w --words <usize> "Number of words in the Diceware passphrase (default: 6)")
+                .required(false)
+                .default_value("6"),
+        )
         .get_matches();
 
     // Create a new configuration with the specified values.
