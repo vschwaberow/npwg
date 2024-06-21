@@ -60,6 +60,9 @@ npwg [OPTIONS] [LENGTH]
 - `-i, --include <STRING>`: Force the inclusion of specific characters (comma-separated)
 - `-n, --num <usize>`: Set the number of passwords to generate (default: 1)
 - `-s, --stats`: Display statistics about the generated passwords
+- `-r, --avoid-repeating`: Avoid repeating characters in the password
+- `-d, --diceware`: Generate a password using the Diceware method
+- `-w, --words <usize>`: Set the number of words to generate (default: 6)
 - `-h, --help`: Display the help information
 - `-V, --version`: Display the version information
 
@@ -104,6 +107,18 @@ Display statistics about the generated password:
 
 ```sh
 npwg -s
+```
+
+Generate a password using the Diceware method. If no diceware wordlist is in ~/.npwg, it will be automatically downloaded from the EFF website:
+
+```sh
+npwg -d
+```
+
+Generate a password using the Diceware method with a custom number of words. The default number of words is 6. The wordlist will be downloaded if it is not found in ~/.npwg:
+
+```sh
+npwg -d -w 8
 ```
 
 ## Contributing
