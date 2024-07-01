@@ -24,7 +24,7 @@ use zeroize::Zeroize;
 #[tokio::main]
 async fn main() -> Result<()> {
     let matches = Command::new("npwg")
-        .version("0.2.1")
+        .version("0.2.2")
         .author("Volker Schwaberow <volker@schwaberow.de>")
         .about("Generates secure passwords")
         .arg(
