@@ -1,14 +1,14 @@
 # npwg - Secure Password Generator
 
-npwg is a secure password generator written in Rust. With npwg, you can easily generate strong and random passwords to protect your online accounts.
+npwg is a secure password generator written in Rust. With npwg, you can easily generate strong and random passwords or passphrases to protect your online accounts.
 
 ## Features
 
 - Generate passwords with custom length
-- Support various character sets (digits, lowercase letters, uppercase letters, symbols)
-- Allow excluding specific characters
-- Allow forcing the inclusion of specific characters
+- Support various predefined character sets
 - Generate multiple passwords at once
+- Generate diceware passphrases
+- Avoid repeating characters in passwords
 - Display statistics about the generated passwords
 
 ## Installation
@@ -26,84 +26,78 @@ This will download and compile the latest version of npwg and install it in your
 ### Manual Installation
 
 1. Make sure you have Rust installed on your system. If not, you can download it from the official Rust website: [https://www.rust-lang.org/tools/install](https://www.rust-lang.org/tools/install)
-
 2. Clone this repository:
-
-```sh
-git clone https://github.com/vschwaberow/npwg.git
-```
+   ```sh
+   git clone https://github.com/vschwaberow/npwg.git
+   ```
 3. Navigate to the project directory:
-
-```sh
-cd npwg
-```
-
+   ```sh
+   cd npwg
+   ```
 4. Build the project:
-
-```sh
-cargo build --release
-```
-
+   ```sh
+   cargo build --release
+   ```
 5. The executable can be found at `target/release/npwg`.
 
 ## Usage
 
 ```sh
-npwg [OPTIONS] [LENGTH]
+npwg [OPTIONS]
 ```
 
 ### Options
 
-- `-l, --length <usize>`: Set the length of the password (default: 8)
-- `-a, --allowed <STRING>`: Set the allowed character sets (comma-separated) [default: digit,lowerletter,upperletter,symbol1,symbol2]
-- `-e, --exclude <STRING>`: Exclude specific characters (comma-separated)
-- `-i, --include <STRING>`: Force the inclusion of specific characters (comma-separated)
-- `-n, --num <usize>`: Set the number of passwords to generate (default: 1)
-- `-s, --stats`: Display statistics about the generated passwords
-- `-h, --help`: Display the help information
-- `-V, --version`: Display the version information
+- `-l, --length <LENGTH>`: Sets the length of the password (or number of words for passphrases) [default: 16]
+- `-c, --count <COUNT>`: Sets the number of passwords to generate [default: 1]
+- `--avoid-repeating`: Avoid repeating characters in the password
+- `--stats`: Show statistics about the generated passwords
+- `-a, --allowed <CHARS>`: Sets the allowed characters (comma-separated list of predefined sets) [default: allprint]
+- `--use-words`: Use words instead of characters (generate diceware passphrases)
+- `-h, --help`: Print help
+- `-V, --version`: Print version
+
+### Predefined Character Sets
+
+- `symbol1`, `symbol2`, `symbol3`: Different sets of symbols
+- `digit`: Numeric digits
+- `lowerletter`: Lowercase letters
+- `upperletter`: Uppercase letters
+- `shell`: Shell-safe characters
+- `homoglyph1` to `homoglyph8`: Various homoglyph sets
+- `slashes`, `brackets`, `punctuation`: Specific character types
+- `all`, `allprint`, `allprintnoquote`, etc.: Various combinations of character types
 
 ### Examples
 
-Generate a password with the default length (8 characters):
+Generate a password with the default length (16 characters):
+```sh
+npwg
+```
 
+Generate a password with a specific length:
 ```sh
 npwg -l 12
 ```
 
-Generate a password that includes only digits and lowercase letters:
-
+Generate multiple passwords:
 ```sh
-npwg -a digit,lowerletter
+npwg -c 5
 ```
 
-Generate a password that excludes specific characters:
-
+Generate a password using only uppercase and lowercase letters:
 ```sh
-npwg -e 0,O,l
+npwg -a upperletter,lowerletter
 ```
 
-Generate a password that forces the inclusion of specific characters:
-
+Generate a diceware passphrase:
 ```sh
-npwg -i 1,2,3
-```
-Generate 5 passwords at once:
-
-```sh
-npwg -n 5
+npwg --use-words -l 6
 ```
 
-Generate a password with a custom length and character sets:
-
+Generate a password and display statistics:
 ```sh
-npwg -l 16 -a digit,lowerletter,upperletter,symbol1,symbol2
-```
-
-Display statistics about the generated password:
-
-```sh
-npwg -s
+npwg --stats
 ```
 
 ## Contributing
@@ -113,6 +107,3 @@ Contributions are welcome! If you find a bug or have a suggestion for improvemen
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
-
-
-
