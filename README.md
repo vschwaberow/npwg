@@ -100,6 +100,18 @@ Generate a password and display statistics:
 npwg --stats
 ```
 
+Generate a password using the Diceware method. If no diceware wordlist is in ~/.npwg, it will be automatically downloaded from the EFF website:
+
+```sh
+npwg -d
+```
+
+Generate a password using the Diceware method with a custom number of words. The default number of words is 6. The wordlist will be downloaded if it is not found in ~/.npwg:
+
+```sh
+npwg -d -w 8
+```
+
 ## Contributing
 
 Contributions are welcome! If you find a bug or have a suggestion for improvement, please open an issue or submit a pull request.
