@@ -798,6 +798,7 @@ dependencies = [
  "regex",
  "reqwest",
  "serde",
+ "thiserror",
  "tokio",
  "zeroize",
 ]
