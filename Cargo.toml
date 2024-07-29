@@ -15,7 +15,7 @@ regex = "1.10.5"
 chacha20 = { version = "0.9.1", features = ["std", "zeroize"] }
 clap = { version = "4.5.9", features = ["cargo", "env", "derive"] }
 zeroize = "1.8.1"
-tokio = { version = "1.38.1", features = ["full"] }
+tokio = { version = "1.39.2", features = ["full"] }
 dashmap = "6.0.1"
 rand_distr = "0.4"
 dirs = "5.0.1"
