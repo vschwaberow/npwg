@@ -19,7 +19,7 @@ tokio = { version = "1.39.2", features = ["full"] }
 dashmap = "6.0.1"
 rand_distr = "0.4"
 dirs = "5.0.1"
-reqwest = { version = "0.12.5", features = ["blocking"] }
+reqwest = { version = "0.12.7", features = ["blocking"] }
 futures = "0.3.30"
 colored = "2.1.0"
 serde = { version = "1.0.207", features = ["derive"] }
