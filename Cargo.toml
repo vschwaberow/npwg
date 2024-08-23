@@ -7,6 +7,14 @@ authors = ["Volker Schwaberow <volker@schwaberow.de>"]
 description = "Securely generate random passwords"
 repository = "https://github.com/vschwaberow/npwg"
 
+[lib]
+name = "npwg"
+path = "src/lib.rs"
+
+[[bin]]
+name = "npwg"
+path = "src/main.rs"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
