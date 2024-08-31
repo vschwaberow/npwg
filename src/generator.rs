@@ -19,7 +19,15 @@ pub async fn generate_password(config: &PasswordGeneratorConfig) -> String {
         if let Some(&ch) = available_chars.choose(&mut rng) {
             password.push(ch);
             if config.avoid_repetition {
-                available_chars.retain(|&c| c != ch);
+                let mut seen = std::collections::HashSet::new();
+                available_chars.retain(|&c| {
+                    if seen.contains(&c) {
+                        false
+                    } else {
+                        seen.insert(c);
+                        true
+                    }
+                });
             }
         }
     }
@@ -41,20 +49,15 @@ pub async fn generate_diceware_passphrase(
 ) -> Vec<String> {
     let mut rng = rand::thread_rng();
     let num_passphrases = config.num_passwords;
-    let mut passphrases = Vec::with_capacity(num_passphrases);
     let num_words = config.length;
+    let mut passphrases = Vec::with_capacity(num_passphrases);
 
     for _ in 0..num_passphrases {
         let passphrase: String = (0..num_words)
-            .map(|i| {
-                let word = wordlist.choose(&mut rng).unwrap();
-                if i > 0 {
-                    format!(" {}", word)
-                } else {
-                    word.clone()
-                }
-            })
-            .collect();
+            .map(|_| wordlist.choose(&mut rng).unwrap().clone())
+            .collect::<Vec<String>>()
+            .join(" ");
+
         passphrases.push(passphrase);
     }
 
