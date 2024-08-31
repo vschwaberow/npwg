@@ -10,7 +10,7 @@ mod error;
 mod generator;
 mod stats;
 
-use std::process::exit;
+use std::process;
 
 use crate::config::DEFINE;
 use clap::{value_parser, Arg, ArgAction, Command};
@@ -73,80 +73,87 @@ async fn main() -> Result<()> {
         )
         .get_matches();
 
-    let length = *matches.get_one::<u8>("length").unwrap();
-    let count = *matches.get_one::<u32>("count").unwrap();
-    let avoid_repeating = matches.get_flag("avoid-repeating");
-    let allowed = matches.get_one::<String>("allowed").unwrap();
-    let use_words = matches.get_flag("use-words");
+    let config = build_config(&matches)?;
 
+    match config.mode {
+        PasswordGeneratorMode::Diceware => handle_diceware(&config, &matches).await,
+        PasswordGeneratorMode::Password => handle_password(&config, &matches).await,
+    }
+}
+
+fn build_config(matches: &clap::ArgMatches) -> Result<PasswordGeneratorConfig> {
     let mut config = PasswordGeneratorConfig::new();
-    config.length = length as usize;
-    config.num_passwords = count as usize;
-    config.set_avoid_repeating(avoid_repeating);
+    config.length = *matches.get_one::<u8>("length").unwrap() as usize;
+    config.num_passwords = *matches.get_one::<u32>("count").unwrap() as usize;
+    config.set_avoid_repeating(matches.get_flag("avoid-repeating"));
     config.clear_allowed_chars();
 
-    let define_keys: Vec<&str> = DEFINE.iter().map(|&(key, _)| key).collect();
-
-    for charset in allowed.split(',') {
-        let charset = charset.trim();
-        if DEFINE.iter().any(|&(key, _)| key == charset) {
-            config.add_allowed_chars(charset);
-        } else {
+    let allowed = matches.get_one::<String>("allowed").unwrap();
+    for charset in allowed.split(',').map(str::trim) {
+        if !DEFINE.iter().any(|&(key, _)| key == charset) {
             eprintln!(
                 "Error: Unknown characterset '{}' was ignored. Use one of: {}",
                 charset.red(),
-                define_keys.join(", ").green()
+                DEFINE
+                    .iter()
+                    .map(|&(key, _)| key)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+                    .green()
             );
-            exit(1);
+            process::exit(1);
         }
+        config.add_allowed_chars(charset);
     }
 
-    config.set_use_words(use_words);
-
+    config.set_use_words(matches.get_flag("use-words"));
     config.validate()?;
-    match config.mode {
-        PasswordGeneratorMode::Diceware => {
-            let wordlist = match diceware::get_wordlist().await {
-                Ok(list) => list,
-                Err(PasswordGeneratorError::WordlistDownloaded) => {
-                    println!("Wordlist downloaded. Please run the program again.");
-                    return Ok(());
-                }
-                Err(e) => return Err(e),
-            };
+    Ok(config)
+}
 
-            let passphrases = generate_diceware_passphrase(&wordlist, &config).await;
-            for passphrase in &passphrases {
-                println!("{}", passphrase.green());
-            }
-
-            if matches.get_flag("stats") {
-                let pq = show_stats(&passphrases);
-                println!("\n{}", "Statistics:".blue().bold());
-                println!("Mean: {:.6}", pq.mean.to_string().yellow());
-                println!("Variance: {:.6}", pq.variance.to_string().yellow());
-                println!("Skewness: {:.6}", pq.skewness.to_string().yellow());
-                println!("Kurtosis: {:.6}", pq.kurtosis.to_string().yellow());
-            }
+async fn handle_diceware(
+    config: &PasswordGeneratorConfig,
+    matches: &clap::ArgMatches,
+) -> Result<()> {
+    let wordlist = match diceware::get_wordlist().await {
+        Ok(list) => list,
+        Err(PasswordGeneratorError::WordlistDownloaded) => {
+            println!("Wordlist downloaded. Please run the program again.");
+            return Ok(());
         }
-        PasswordGeneratorMode::Password => {
-            let passwords = generate_passwords(&config).await;
-            for password in &passwords {
-                println!("{}", password.green());
-            }
+        Err(e) => return Err(e),
+    };
 
-            if matches.get_flag("stats") {
-                let pq = show_stats(&passwords);
-                println!("\n{}", "Statistics:".blue().bold());
-                println!("Mean: {:.6}", pq.mean.to_string().yellow());
-                println!("Variance: {:.6}", pq.variance.to_string().yellow());
-                println!("Skewness: {:.6}", pq.skewness.to_string().yellow());
-                println!("Kurtosis: {:.6}", pq.kurtosis.to_string().yellow());
-            }
+    let passphrases = generate_diceware_passphrase(&wordlist, config).await;
+    passphrases.iter().for_each(|p| println!("{}", p.green()));
 
-            passwords.into_iter().for_each(|mut p| p.zeroize());
-        }
+    if matches.get_flag("stats") {
+        print_stats(&passphrases);
     }
 
     Ok(())
+}
+
+async fn handle_password(
+    config: &PasswordGeneratorConfig,
+    matches: &clap::ArgMatches,
+) -> Result<()> {
+    let passwords = generate_passwords(config).await;
+    passwords.iter().for_each(|p| println!("{}", p.green()));
+
+    if matches.get_flag("stats") {
+        print_stats(&passwords);
+    }
+
+    passwords.into_iter().for_each(|mut p| p.zeroize());
+    Ok(())
+}
+
+fn print_stats(data: &[String]) {
+    let pq = show_stats(data);
+    println!("\n{}", "Statistics:".blue().bold());
+    println!("Mean: {:.6}", pq.mean.to_string().yellow());
+    println!("Variance: {:.6}", pq.variance.to_string().yellow());
+    println!("Skewness: {:.6}", pq.skewness.to_string().yellow());
+    println!("Kurtosis: {:.6}", pq.kurtosis.to_string().yellow());
 }
