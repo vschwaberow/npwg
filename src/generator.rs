@@ -19,7 +19,15 @@ pub async fn generate_password(config: &PasswordGeneratorConfig) -> String {
         if let Some(&ch) = available_chars.choose(&mut rng) {
             password.push(ch);
             if config.avoid_repetition {
-                available_chars.retain(|&c| c != ch);
+                let mut seen = std::collections::HashSet::new();
+                available_chars.retain(|&c| {
+                    if seen.contains(&c) {
+                        false
+                    } else {
+                        seen.insert(c);
+                        true
+                    }
+                });
             }
         }
     }
