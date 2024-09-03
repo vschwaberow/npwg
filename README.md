@@ -54,6 +54,7 @@ npwg [OPTIONS]
 - `--stats`: Show statistics about the generated passwords
 - `-a, --allowed <CHARS>`: Sets the allowed characters (comma-separated list of predefined sets) [default: allprint]
 - `--use-words`: Use words instead of characters (generate diceware passphrases)
+- `-i --interactive`: Interactive mode, use a small console based gui to lead through the process
 - `-h, --help`: Print help
 - `-V, --version`: Print version
 
@@ -69,6 +70,15 @@ npwg [OPTIONS]
 - `all`, `allprint`, `allprintnoquote`, etc.: Various combinations of character types
 
 ### Examples
+
+Use the interactive mode
+```sh
+npwg -i
+```
+or
+```sh
+npwg --interactive
+```
 
 Generate a password with the default length (16 characters):
 ```sh
