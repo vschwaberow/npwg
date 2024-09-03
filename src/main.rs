@@ -20,6 +20,8 @@ use error::{PasswordGeneratorError, Result};
 use generator::{generate_diceware_passphrase, generate_passwords};
 use stats::show_stats;
 use zeroize::Zeroize;
+use dialoguer::{theme::ColorfulTheme, Select, Input, Confirm};
+use console::Term;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -71,7 +73,18 @@ async fn main() -> Result<()> {
                 .help("Use words instead of characters")
                 .action(ArgAction::SetTrue),
         )
+        .arg(
+            Arg::new("interactive")
+                .short('i')
+                .long("interactive")
+                .help("Start interactive console mode")
+                .action(ArgAction::SetTrue),
+        )
         .get_matches();
+
+    if matches.get_flag("interactive") {
+        return interactive_mode().await;
+    }
 
     let config = build_config(&matches)?;
 
@@ -156,4 +169,114 @@ fn print_stats(data: &[String]) {
     println!("Variance: {:.6}", pq.variance.to_string().yellow());
     println!("Skewness: {:.6}", pq.skewness.to_string().yellow());
     println!("Kurtosis: {:.6}", pq.kurtosis.to_string().yellow());
+}
+
+async fn interactive_mode() -> Result<()> {
+    let term = Term::stdout();
+    let theme = ColorfulTheme::default();
+
+    loop {
+        term.clear_screen()?;
+        println!("{}", "Welcome to NPWG Interactive Mode!".bold().cyan());
+        
+        let options = vec!["Generate Password", "Generate Passphrase", "Exit"];
+        let selection = Select::with_theme(&theme)
+            .with_prompt("What would you like to do?")
+            .items(&options)
+            .default(0)
+            .interact_on(&term)
+            .map_err(|e| PasswordGeneratorError::DialoguerError(e))?;
+
+        match selection {
+            0 => generate_interactive_password(&term, &theme).await?,
+            1 => generate_interactive_passphrase(&term, &theme).await?,
+            2 => break,
+            _ => unreachable!(),
+        }
+
+        if !Confirm::with_theme(&theme)
+            .with_prompt("Do you want to perform another action?")
+            .default(true)
+            .interact_on(&term)
+            .map_err(|e| PasswordGeneratorError::DialoguerError(e))?
+        {
+            break;
+        }
+    }
+
+    println!("{}", "Thank you for using NPWG!".bold().green());
+    Ok(())
+}
+
+async fn generate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Result<()> {
+    let length: u8 = Input::with_theme(theme)
+        .with_prompt("Password length")
+        .default(16)
+        .interact_on(term)?;
+
+    let count: u32 = Input::with_theme(theme)
+        .with_prompt("Number of passwords")
+        .default(1)
+        .interact_on(term)?;
+
+    let avoid_repeating = Confirm::with_theme(theme)
+        .with_prompt("Avoid repeating characters?")
+        .default(false)
+        .interact_on(term)?;
+
+    let mut config = PasswordGeneratorConfig::new();
+    config.length = length as usize;
+    config.num_passwords = count as usize;
+    config.set_avoid_repeating(avoid_repeating);
+    config.validate()?;
+
+    let passwords = generate_passwords(&config).await;
+    println!("\n{}", "Generated Passwords:".bold().green());
+    passwords.iter().for_each(|password| println!("{}", password.yellow()));
+
+    if Confirm::with_theme(theme)
+        .with_prompt("Show statistics?")
+        .default(false)
+        .interact_on(term)?
+    {
+        print_stats(&passwords);
+    }
+
+    passwords.into_iter().for_each(|mut p| p.zeroize());
+    Ok(())
+}
+
+async fn generate_interactive_passphrase(term: &Term, theme: &ColorfulTheme) -> Result<()> {
+    let count: u32 = Input::with_theme(theme)
+        .with_prompt("Number of passphrases")
+        .default(1)
+        .interact_on(term)?;
+
+    let wordlist = match diceware::get_wordlist().await {
+        Ok(list) => list,
+        Err(PasswordGeneratorError::WordlistDownloaded) => {
+            println!("Wordlist downloaded. Please run the program again.");
+            return Ok(());
+        }
+        Err(e) => return Err(e),
+    };
+
+    let mut config = PasswordGeneratorConfig::new();
+    config.num_passwords = count as usize;
+    config.set_use_words(true);
+    config.validate()?;
+
+    let passphrases = generate_diceware_passphrase(&wordlist, &config).await;
+    println!("\n{}", "Generated Passphrases:".bold().green());
+    passphrases.iter().for_each(|passphrase| println!("{}", passphrase.yellow()));
+
+    if Confirm::with_theme(theme)
+        .with_prompt("Show statistics?")
+        .default(false)
+        .interact_on(term)?
+    {
+        print_stats(&passphrases);
+    }
+
+    Ok(())
 }
