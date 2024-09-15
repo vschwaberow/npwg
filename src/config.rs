@@ -44,7 +44,11 @@ pub enum PasswordGeneratorMode {
     Diceware,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Separator {
+    Fixed(char),
+    Random(Vec<char>),
+}
+
 pub struct PasswordGeneratorConfig {
     pub length: usize,
     pub allowed_chars: Vec<char>,
@@ -54,6 +58,7 @@ pub struct PasswordGeneratorConfig {
     pub mode: PasswordGeneratorMode,
     pub diceware_words: usize,
     pub num_passwords: usize,
+    pub separator: Option<Separator>,
 }
 
 impl Default for PasswordGeneratorConfig {
@@ -73,6 +78,7 @@ impl PasswordGeneratorConfig {
             avoid_repetition: false,
             mode: PasswordGeneratorMode::Password,
             diceware_words: 6,
+            separator: None,
         };
         config.set_allowed_chars("allprint");
         config
