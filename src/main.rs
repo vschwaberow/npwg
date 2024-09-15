@@ -15,13 +15,13 @@ use std::process;
 use crate::config::DEFINE;
 use clap::{value_parser, Arg, ArgAction, Command};
 use colored::*;
-use config::{PasswordGeneratorConfig, PasswordGeneratorMode};
+use config::{PasswordGeneratorConfig, PasswordGeneratorMode, Separator};
+use console::Term;
+use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
 use error::{PasswordGeneratorError, Result};
 use generator::{generate_diceware_passphrase, generate_passwords};
 use stats::show_stats;
 use zeroize::Zeroize;
-use dialoguer::{theme::ColorfulTheme, Select, Input, Confirm};
-use console::Term;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -80,6 +80,13 @@ async fn main() -> Result<()> {
                 .help("Start interactive console mode")
                 .action(ArgAction::SetTrue),
         )
+        .arg(
+            Arg::new("separator")
+                .long("separator")
+                .value_name("SEPARATOR")
+                .help("Sets the separator for diceware passphrases (single character or 'random')")
+                .requires("use-words"),
+        )
         .get_matches();
 
     if matches.get_flag("interactive") {
@@ -118,8 +125,27 @@ fn build_config(matches: &clap::ArgMatches) -> Result<PasswordGeneratorConfig> {
         }
         config.add_allowed_chars(charset);
     }
+    config.mode = if matches.get_flag("use-words") {
+        PasswordGeneratorMode::Diceware
+    } else {
+        PasswordGeneratorMode::Password
+    };
 
-    config.set_use_words(matches.get_flag("use-words"));
+    if config.mode == PasswordGeneratorMode::Diceware {
+        config.separator = if let Some(separator) = matches.get_one::<String>("separator") {
+            match separator.as_str() {
+                "random" => Some(Separator::Random(('a'..='z').chain('0'..='9').collect())),
+                s if s.len() == 1 => Some(Separator::Fixed(s.chars().next().unwrap())),
+                _ => {
+                    eprintln!("Error: Separator must be a single character or 'random'");
+                    process::exit(1);
+                }
+            }
+        } else {
+            Some(Separator::Fixed(' ')) // Default to space separator
+        };
+    }
+
     config.validate()?;
     Ok(config)
 }
@@ -178,7 +204,7 @@ async fn interactive_mode() -> Result<()> {
     loop {
         term.clear_screen()?;
         println!("{}", "Welcome to NPWG Interactive Mode!".bold().cyan());
-        
+
         let options = vec!["Generate Password", "Generate Passphrase", "Exit"];
         let selection = Select::with_theme(&theme)
             .with_prompt("What would you like to do?")
@@ -232,7 +258,9 @@ async fn generate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Re
 
     let passwords = generate_passwords(&config).await;
     println!("\n{}", "Generated Passwords:".bold().green());
-    passwords.iter().for_each(|password| println!("{}", password.yellow()));
+    passwords
+        .iter()
+        .for_each(|password| println!("{}", password.yellow()));
 
     if Confirm::with_theme(theme)
         .with_prompt("Show statistics?")
@@ -252,6 +280,11 @@ async fn generate_interactive_passphrase(term: &Term, theme: &ColorfulTheme) -> 
         .default(1)
         .interact_on(term)?;
 
+    let separator: String = Input::with_theme(theme)
+        .with_prompt("Separator (single character, 'random', or press Enter for space)")
+        .allow_empty(true)
+        .interact_on(term)?;
+
     let wordlist = match diceware::get_wordlist().await {
         Ok(list) => list,
         Err(PasswordGeneratorError::WordlistDownloaded) => {
@@ -264,11 +297,27 @@ async fn generate_interactive_passphrase(term: &Term, theme: &ColorfulTheme) -> 
     let mut config = PasswordGeneratorConfig::new();
     config.num_passwords = count as usize;
     config.set_use_words(true);
+
+    config.separator = if separator.is_empty() {
+        Some(Separator::Fixed(' ')) // Default to space separator
+    } else {
+        match separator.as_str() {
+            "random" => Some(Separator::Random(('a'..='z').chain('0'..='9').collect())),
+            s if s.len() == 1 => Some(Separator::Fixed(s.chars().next().unwrap())),
+            _ => {
+                println!("Invalid separator. Using default (space).");
+                Some(Separator::Fixed(' '))
+            }
+        }
+    };
+
     config.validate()?;
 
     let passphrases = generate_diceware_passphrase(&wordlist, &config).await;
     println!("\n{}", "Generated Passphrases:".bold().green());
-    passphrases.iter().for_each(|passphrase| println!("{}", passphrase.yellow()));
+    passphrases
+        .iter()
+        .for_each(|passphrase| println!("{}", passphrase.yellow()));
 
     if Confirm::with_theme(theme)
         .with_prompt("Show statistics?")

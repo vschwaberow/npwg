@@ -36,15 +36,15 @@ pub async fn get_wordlist() -> Result<Vec<String>> {
 
 async fn download_wordlist(wordlist_path: &PathBuf) -> Result<()> {
     println!("Downloading wordlist from {}", DICEWARE_URL);
-    
+
     let response = reqwest::get(DICEWARE_URL).await?.text().await?;
     fs::create_dir_all(wordlist_path.parent().ok_or_else(|| {
         std::io::Error::new(std::io::ErrorKind::NotFound, "Parent directory not found")
     })?)?;
-    
+
     let mut file = File::create(wordlist_path)?;
     file.write_all(response.as_bytes())?;
-    
+
     println!("Wordlist downloaded to {:?}", wordlist_path);
     Ok(())
 }

@@ -5,6 +5,7 @@
 // Copyright (c) 2022 Volker Schwaberow
 
 use crate::config::PasswordGeneratorConfig;
+use crate::config::Separator;
 use rand::seq::SliceRandom;
 
 pub async fn generate_password(config: &PasswordGeneratorConfig) -> String {
@@ -52,14 +53,29 @@ pub async fn generate_diceware_passphrase(
     let num_words = config.length;
     let mut passphrases = Vec::with_capacity(num_passphrases);
 
+    // Define the default separator character set
+    let default_separators: Vec<char> = ('a'..='z').chain('0'..='9').collect();
+
     for _ in 0..num_passphrases {
         let passphrase: String = (0..num_words)
             .map(|_| wordlist.choose(&mut rng).unwrap().clone())
             .collect::<Vec<String>>()
-            .join(" ");
+            .join(&get_separator(config, &default_separators, &mut rng));
 
         passphrases.push(passphrase);
     }
 
     passphrases
+}
+
+fn get_separator(
+    config: &PasswordGeneratorConfig,
+    default_separators: &[char],
+    rng: &mut impl rand::Rng,
+) -> String {
+    match &config.separator {
+        Some(Separator::Fixed(c)) => c.to_string(),
+        Some(Separator::Random(chars)) => chars.choose(rng).unwrap().to_string(),
+        None => default_separators.choose(rng).unwrap().to_string(),
+    }
 }
