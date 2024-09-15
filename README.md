@@ -54,6 +54,7 @@ npwg [OPTIONS]
 - `--stats`: Show statistics about the generated passwords
 - `-a, --allowed <CHARS>`: Sets the allowed characters (comma-separated list of predefined sets) [default: allprint]
 - `--use-words`: Use words instead of characters (generate diceware passphrases)
+- `--separator <SEPARATOR>`: Sets the separator for diceware passphrases. Can be a single character or 'random'. Only applicable with --use-words. [default: space]
 - `-i --interactive`: Interactive mode, use a small console based gui to lead through the process
 - `-h, --help`: Print help
 - `-V, --version`: Print version
@@ -120,6 +121,16 @@ Generate a password using the Diceware method with a custom number of words. The
 
 ```sh
 npwg -d -w 8
+```
+
+Generate a diceware passphrase with a custom separator:
+```sh
+npwg --use-words --separator "-" -l 6
+```
+
+Generate a diceware passphrase with random separators:
+```sh
+npwg --use-words --separator random -l 6
 ```
 
 ## Contributing
