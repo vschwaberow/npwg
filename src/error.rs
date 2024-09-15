@@ -4,8 +4,8 @@
 // Author: Volker Schwaberow <volker@schwaberow.de>
 // Copyright (c) 2022 Volker Schwaberow
 
-use thiserror::Error;
 use dialoguer::Error as DialoguerError;
+use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum PasswordGeneratorError {
