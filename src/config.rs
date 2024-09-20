@@ -56,7 +56,6 @@ pub struct PasswordGeneratorConfig {
     pub included_chars: HashSet<char>,
     pub avoid_repetition: bool,
     pub mode: PasswordGeneratorMode,
-    pub diceware_words: usize,
     pub num_passwords: usize,
     pub separator: Option<Separator>,
 }
@@ -77,7 +76,6 @@ impl PasswordGeneratorConfig {
             num_passwords: 1,
             avoid_repetition: false,
             mode: PasswordGeneratorMode::Password,
-            diceware_words: 6,
             separator: None,
         };
         config.set_allowed_chars("allprint");
