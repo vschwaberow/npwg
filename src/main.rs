@@ -158,7 +158,7 @@ fn build_config(matches: &clap::ArgMatches) -> Result<PasswordGeneratorConfig> {
                 }
             }
         } else {
-            Some(Separator::Fixed(' ')) // Default to space separator
+            Some(Separator::Fixed(' '))
         };
     }
 
@@ -341,7 +341,7 @@ async fn generate_interactive_passphrase(term: &Term, theme: &ColorfulTheme) -> 
     config.set_use_words(true);
 
     config.separator = if separator.is_empty() {
-        Some(Separator::Fixed(' ')) // Default to space separator
+        Some(Separator::Fixed(' '))
     } else {
         match separator.as_str() {
             "random" => Some(Separator::Random(('a'..='z').chain('0'..='9').collect())),
