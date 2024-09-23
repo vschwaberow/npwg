@@ -19,7 +19,9 @@ use config::{PasswordGeneratorConfig, PasswordGeneratorMode, Separator};
 use console::Term;
 use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
 use error::{PasswordGeneratorError, Result};
-use generator::{generate_diceware_passphrase, generate_passwords};
+use generator::{
+    generate_diceware_passphrase, generate_passwords, generate_pronounceable_passwords,
+};
 use stats::show_stats;
 use zeroize::Zeroize;
 
@@ -87,6 +89,12 @@ async fn main() -> Result<()> {
                 .help("Sets the separator for diceware passphrases (single character or 'random')")
                 .requires("use-words"),
         )
+        .arg(
+            Arg::new("pronounceable")
+                .long("pronounceable")
+                .help("Generate pronounceable passwords")
+                .action(ArgAction::SetTrue),
+        )
         .get_matches();
 
     if matches.get_flag("interactive") {
@@ -97,7 +105,13 @@ async fn main() -> Result<()> {
 
     match config.mode {
         PasswordGeneratorMode::Diceware => handle_diceware(&config, &matches).await,
-        PasswordGeneratorMode::Password => handle_password(&config, &matches).await,
+        PasswordGeneratorMode::Password => {
+            if config.pronounceable {
+                handle_pronounceable(&config, &matches).await
+            } else {
+                handle_password(&config, &matches).await
+            }
+        }
     }
 }
 
@@ -131,6 +145,8 @@ fn build_config(matches: &clap::ArgMatches) -> Result<PasswordGeneratorConfig> {
         PasswordGeneratorMode::Password
     };
 
+    config.pronounceable = matches.get_flag("pronounceable");
+
     if config.mode == PasswordGeneratorMode::Diceware {
         config.separator = if let Some(separator) = matches.get_one::<String>("separator") {
             match separator.as_str() {
@@ -142,7 +158,7 @@ fn build_config(matches: &clap::ArgMatches) -> Result<PasswordGeneratorConfig> {
                 }
             }
         } else {
-            Some(Separator::Fixed(' ')) // Default to space separator
+            Some(Separator::Fixed(' '))
         };
     }
 
@@ -178,6 +194,21 @@ async fn handle_password(
     matches: &clap::ArgMatches,
 ) -> Result<()> {
     let passwords = generate_passwords(config).await;
+    passwords.iter().for_each(|p| println!("{}", p.green()));
+
+    if matches.get_flag("stats") {
+        print_stats(&passwords);
+    }
+
+    passwords.into_iter().for_each(|mut p| p.zeroize());
+    Ok(())
+}
+
+async fn handle_pronounceable(
+    config: &PasswordGeneratorConfig,
+    matches: &clap::ArgMatches,
+) -> Result<()> {
+    let passwords = generate_pronounceable_passwords(config).await;
     passwords.iter().for_each(|p| println!("{}", p.green()));
 
     if matches.get_flag("stats") {
@@ -250,13 +281,24 @@ async fn generate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Re
         .default(false)
         .interact_on(term)?;
 
+    let pronounceable = Confirm::with_theme(theme)
+        .with_prompt("Generate pronounceable passwords?")
+        .default(false)
+        .interact_on(term)?;
+
     let mut config = PasswordGeneratorConfig::new();
     config.length = length as usize;
     config.num_passwords = count as usize;
     config.set_avoid_repeating(avoid_repeating);
+    config.pronounceable = pronounceable;
     config.validate()?;
 
-    let passwords = generate_passwords(&config).await;
+    let passwords = if pronounceable {
+        generate_pronounceable_passwords(&config).await
+    } else {
+        generate_passwords(&config).await
+    };
+
     println!("\n{}", "Generated Passwords:".bold().green());
     passwords
         .iter()
@@ -299,7 +341,7 @@ async fn generate_interactive_passphrase(term: &Term, theme: &ColorfulTheme) -> 
     config.set_use_words(true);
 
     config.separator = if separator.is_empty() {
-        Some(Separator::Fixed(' ')) // Default to space separator
+        Some(Separator::Fixed(' '))
     } else {
         match separator.as_str() {
             "random" => Some(Separator::Random(('a'..='z').chain('0'..='9').collect())),

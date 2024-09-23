@@ -8,6 +8,11 @@ use crate::config::PasswordGeneratorConfig;
 use crate::config::Separator;
 use rand::seq::SliceRandom;
 
+const DEFAULT_SEPARATORS: &[char] = &[
+    'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's',
+    't', 'u', 'v', 'w', 'x', 'y', 'z', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+];
+
 pub async fn generate_password(config: &PasswordGeneratorConfig) -> String {
     let mut rng = rand::thread_rng();
     let mut password = String::with_capacity(config.length);
@@ -53,15 +58,14 @@ pub async fn generate_diceware_passphrase(
     let num_words = config.length;
     let mut passphrases = Vec::with_capacity(num_passphrases);
 
-    // Define the default separator character set
-    let default_separators: Vec<char> = ('a'..='z').chain('0'..='9').collect();
-
     for _ in 0..num_passphrases {
-        let passphrase: String = (0..num_words)
-            .map(|_| wordlist.choose(&mut rng).unwrap().clone())
-            .collect::<Vec<String>>()
-            .join(&get_separator(config, &default_separators, &mut rng));
-
+        let mut passphrase = String::with_capacity(num_words * 5 + (num_words - 1));
+        for i in 0..num_words {
+            if i > 0 {
+                passphrase.push_str(&get_separator(config, DEFAULT_SEPARATORS, &mut rng));
+            }
+            passphrase.push_str(wordlist.choose(&mut rng).unwrap());
+        }
         passphrases.push(passphrase);
     }
 
@@ -78,4 +82,42 @@ fn get_separator(
         Some(Separator::Random(chars)) => chars.choose(rng).unwrap().to_string(),
         None => default_separators.choose(rng).unwrap().to_string(),
     }
+}
+
+pub async fn generate_pronounceable_password(config: &PasswordGeneratorConfig) -> String {
+    let mut rng = rand::thread_rng();
+    let mut password = String::with_capacity(config.length);
+
+    let consonants = "bcdfghjklmnpqrstvwxyz";
+    let vowels = "aeiou";
+
+    while password.len() < config.length {
+        if password.len() % 2 == 0 {
+            password.push(
+                *consonants
+                    .chars()
+                    .collect::<Vec<char>>()
+                    .choose(&mut rng)
+                    .unwrap(),
+            );
+        } else {
+            password.push(
+                *vowels
+                    .chars()
+                    .collect::<Vec<char>>()
+                    .choose(&mut rng)
+                    .unwrap(),
+            );
+        }
+    }
+
+    password
+}
+
+pub async fn generate_pronounceable_passwords(config: &PasswordGeneratorConfig) -> Vec<String> {
+    let mut passwords = Vec::with_capacity(config.num_passwords);
+    for _ in 0..config.num_passwords {
+        passwords.push(generate_pronounceable_password(config).await);
+    }
+    passwords
 }
