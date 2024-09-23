@@ -83,3 +83,41 @@ fn get_separator(
         None => default_separators.choose(rng).unwrap().to_string(),
     }
 }
+
+pub async fn generate_pronounceable_password(config: &PasswordGeneratorConfig) -> String {
+    let mut rng = rand::thread_rng();
+    let mut password = String::with_capacity(config.length);
+
+    let consonants = "bcdfghjklmnpqrstvwxyz";
+    let vowels = "aeiou";
+
+    while password.len() < config.length {
+        if password.len() % 2 == 0 {
+            password.push(
+                *consonants
+                    .chars()
+                    .collect::<Vec<char>>()
+                    .choose(&mut rng)
+                    .unwrap(),
+            );
+        } else {
+            password.push(
+                *vowels
+                    .chars()
+                    .collect::<Vec<char>>()
+                    .choose(&mut rng)
+                    .unwrap(),
+            );
+        }
+    }
+
+    password
+}
+
+pub async fn generate_pronounceable_passwords(config: &PasswordGeneratorConfig) -> Vec<String> {
+    let mut passwords = Vec::with_capacity(config.num_passwords);
+    for _ in 0..config.num_passwords {
+        passwords.push(generate_pronounceable_password(config).await);
+    }
+    passwords
+}

@@ -58,6 +58,7 @@ pub struct PasswordGeneratorConfig {
     pub mode: PasswordGeneratorMode,
     pub num_passwords: usize,
     pub separator: Option<Separator>,
+    pub pronounceable: bool,
 }
 
 impl Default for PasswordGeneratorConfig {
@@ -77,6 +78,7 @@ impl PasswordGeneratorConfig {
             avoid_repetition: false,
             mode: PasswordGeneratorMode::Password,
             separator: None,
+            pronounceable: false,
         };
         config.set_allowed_chars("allprint");
         config
