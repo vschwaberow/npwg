@@ -112,8 +112,27 @@ async fn main() -> Result<()> {
         .arg(
             Arg::new("mutate")
                 .long("mutate")
-                .help("Mutate existing passwords")
+                .help("Mutate the passwords")
                 .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("mutation_type")
+                .long("mutation-type")
+                .help("Type of mutation to apply")
+                .default_value("default"),
+        )
+        .arg(
+            Arg::new("mutation_strength")
+                .long("mutation-strength")
+                .help("Strength of mutation")
+                .default_value("1"),
+        )
+        .arg(
+            Arg::new("lengthen")
+                .long("lengthen")
+                .value_name("INCREASE")
+                .help("Increase the length of passwords during mutation")
+                .value_parser(value_parser!(usize)),
         )
         .get_matches();
 
@@ -266,11 +285,16 @@ async fn handle_mutation(
         .map(|s| s.trim().to_string())
         .collect();
 
+    let lengthen = matches.get_one::<usize>("lengthen").unwrap_or(&0);
+    let _mutation_type = matches
+        .get_one::<String>("mutation_type")
+        .unwrap_or(&"default".to_string());
+
     let passwords_clone = passwords.clone();
 
     println!("\n{}", "Mutated Passwords:".bold().green());
     for password in passwords {
-        let mutated = mutate_password(&password, config);
+        let mutated = mutate_password(&password, config, *lengthen);
         println!("Original: {}", password.yellow());
         println!("Mutated:  {}", mutated.green());
         println!();
@@ -490,7 +514,12 @@ async fn mutate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Resu
     let config = PasswordGeneratorConfig::new();
     config.validate()?;
 
-    let mutated = mutate_password(&password, &config);
+    let lengthen: usize = Input::with_theme(theme)
+        .with_prompt("Increase the length of the password")
+        .default(0)
+        .interact_on(term)?;
+
+    let mutated = mutate_password(&password, &config, lengthen);
 
     println!("\n{}", "Mutated Password:".bold().green());
     println!("Original: {}", password.yellow());

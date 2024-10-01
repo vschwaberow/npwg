@@ -123,7 +123,11 @@ pub async fn generate_pronounceable_passwords(config: &PasswordGeneratorConfig) 
     passwords
 }
 
-pub fn mutate_password(password: &str, config: &PasswordGeneratorConfig) -> String {
+pub fn mutate_password(
+    password: &str,
+    config: &PasswordGeneratorConfig,
+    lengthen: usize,
+) -> String {
     let mut rng = rand::thread_rng();
     let mut mutated = password.to_string();
     let mutation_count = (password.len() as f64 * 0.2).ceil() as usize;
@@ -159,5 +163,26 @@ pub fn mutate_password(password: &str, config: &PasswordGeneratorConfig) -> Stri
         }
     }
 
+    if lengthen > 0 {
+        mutated = lengthen_password(&mutated, lengthen);
+    }
+
     mutated
+}
+
+fn lengthen_password(password: &str, increase: usize) -> String {
+    let mut lengthened = password.to_string();
+    for _ in 0..increase {
+        lengthened.push(random_char());
+    }
+    lengthened
+}
+
+fn random_char() -> char {
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()"
+        .chars()
+        .collect::<Vec<char>>()
+        .choose(&mut rand::thread_rng())
+        .copied()
+        .unwrap()
 }
