@@ -52,6 +52,7 @@ npwg [OPTIONS]
 - `-c, --count <COUNT>`: Sets the number of passwords to generate [default: 1]
 - `--avoid-repeating`: Avoid repeating characters in the password
 - `--stats`: Show statistics about the generated passwords
+- `--strength`: Show the estimated strength of the generated passwords
 - `-a, --allowed <CHARS>`: Sets the allowed characters (comma-separated list of predefined sets) [default: allprint]
 - `--use-words`: Use words instead of characters (generate diceware passphrases)
 - `--separator <SEPARATOR>`: Sets the separator for diceware passphrases. Can be a single character or 'random'. Only applicable with --use-words. [default: space]
@@ -109,6 +110,11 @@ npwg --use-words -l 6
 Generate a password and display statistics:
 ```sh
 npwg --stats
+```
+
+Generate a password and display the estimated strength:
+```sh 
+npwg --strength
 ```
 
 Generate a password using the Diceware method. If no diceware wordlist is in ~/.npwg, it will be automatically downloaded from the EFF website:
