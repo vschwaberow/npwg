@@ -9,6 +9,7 @@ pub mod diceware;
 pub mod error;
 pub mod generator;
 pub mod stats;
+pub mod strength;
 
 pub use config::{PasswordGeneratorConfig, PasswordGeneratorMode};
 pub use error::{PasswordGeneratorError, Result};
