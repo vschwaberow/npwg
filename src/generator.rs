@@ -7,6 +7,7 @@
 use crate::config::PasswordGeneratorConfig;
 use crate::config::Separator;
 use rand::seq::SliceRandom;
+use rand::Rng;
 
 const DEFAULT_SEPARATORS: &[char] = &[
     'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's',
@@ -120,4 +121,43 @@ pub async fn generate_pronounceable_passwords(config: &PasswordGeneratorConfig) 
         passwords.push(generate_pronounceable_password(config).await);
     }
     passwords
+}
+
+pub fn mutate_password(password: &str, config: &PasswordGeneratorConfig) -> String {
+    let mut rng = rand::thread_rng();
+    let mut mutated = password.to_string();
+    let mutation_count = (password.len() as f64 * 0.2).ceil() as usize;
+
+    for _ in 0..mutation_count {
+        let index = rng.gen_range(0..mutated.len());
+        let mutation_type = rng.gen_range(0..4);
+
+        match mutation_type {
+            0 => {
+                if let Some(new_char) = config.allowed_chars.choose(&mut rng) {
+                    mutated.replace_range(index..index + 1, &new_char.to_string());
+                }
+            }
+            1 => {
+                if let Some(new_char) = config.allowed_chars.choose(&mut rng) {
+                    mutated.insert(index, *new_char);
+                }
+            }
+            2 => {
+                if mutated.len() > 1 {
+                    mutated.remove(index);
+                }
+            }
+            3 => {
+                if index < mutated.len() - 1 {
+                    let mut chars: Vec<char> = mutated.chars().collect();
+                    chars.swap(index, index + 1);
+                    mutated = chars.into_iter().collect();
+                }
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    mutated
 }
