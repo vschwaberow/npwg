@@ -9,11 +9,12 @@ mod diceware;
 mod error;
 mod generator;
 mod stats;
+mod strength;
 
 use std::process;
 
 use crate::config::DEFINE;
-use clap::{value_parser, Arg, ArgAction, Command};
+use clap::{value_parser, Arg, ArgAction, Command, ArgGroup};
 use colored::*;
 use config::{PasswordGeneratorConfig, PasswordGeneratorMode, Separator};
 use console::Term;
@@ -23,6 +24,7 @@ use generator::{
     generate_diceware_passphrase, generate_passwords, generate_pronounceable_passwords,
 };
 use stats::show_stats;
+use strength::{evaluate_password_strength, get_strength_feedback, get_strength_bar};
 use zeroize::Zeroize;
 
 #[tokio::main]
@@ -60,6 +62,17 @@ async fn main() -> Result<()> {
                 .long("stats")
                 .help("Show statistics about the generated passwords")
                 .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("strength")
+                .long("strength")
+                .help("Show strength meter for the generated passwords")
+                .action(ArgAction::SetTrue),
+        )
+        .group(
+            ArgGroup::new("output_options")
+                .args(["stats", "strength"])
+                .multiple(true),
         )
         .arg(
             Arg::new("allowed")
@@ -182,6 +195,10 @@ async fn handle_diceware(
     let passphrases = generate_diceware_passphrase(&wordlist, config).await;
     passphrases.iter().for_each(|p| println!("{}", p.green()));
 
+    if matches.get_flag("strength") {
+        print_strength_meter(&passphrases);
+    }
+
     if matches.get_flag("stats") {
         print_stats(&passphrases);
     }
@@ -195,6 +212,10 @@ async fn handle_password(
 ) -> Result<()> {
     let passwords = generate_passwords(config).await;
     passwords.iter().for_each(|p| println!("{}", p.green()));
+
+    if matches.get_flag("strength") {
+        print_strength_meter(&passwords);
+    }
 
     if matches.get_flag("stats") {
         print_stats(&passwords);
@@ -211,12 +232,40 @@ async fn handle_pronounceable(
     let passwords = generate_pronounceable_passwords(config).await;
     passwords.iter().for_each(|p| println!("{}", p.green()));
 
+    if matches.get_flag("strength") {
+        print_strength_meter(&passwords);
+    }
+
     if matches.get_flag("stats") {
         print_stats(&passwords);
     }
 
     passwords.into_iter().for_each(|mut p| p.zeroize());
     Ok(())
+}
+
+fn print_strength_meter(data: &[String]) {
+    println!("\n{}", "Password Strength:".blue().bold());
+    for (i, password) in data.iter().enumerate() {
+        let strength = evaluate_password_strength(password);
+        let feedback = get_strength_feedback(strength);
+        let strength_bar = get_strength_bar(strength);
+        println!(
+            "Password {}: {} {:.2} {} {}",
+            i + 1,
+            strength_bar,
+            strength,
+            feedback.color(match &*feedback {
+                "Very Weak" => "red",
+                "Weak" => "yellow",
+                "Moderate" => "blue",
+                "Strong" => "green",
+                "Very Strong" => "bright green",
+                _ => "white",
+            }),
+            password.yellow()
+        );
+    }
 }
 
 fn print_stats(data: &[String]) {
@@ -300,9 +349,15 @@ async fn generate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Re
     };
 
     println!("\n{}", "Generated Passwords:".bold().green());
-    passwords
-        .iter()
-        .for_each(|password| println!("{}", password.yellow()));
+    passwords.iter().for_each(|p| println!("{}", p.yellow()));
+
+    if Confirm::with_theme(theme)
+        .with_prompt("Show strength meter?")
+        .default(true)
+        .interact_on(term)?
+    {
+        print_strength_meter(&passwords);
+    }
 
     if Confirm::with_theme(theme)
         .with_prompt("Show statistics?")
@@ -357,9 +412,15 @@ async fn generate_interactive_passphrase(term: &Term, theme: &ColorfulTheme) -> 
 
     let passphrases = generate_diceware_passphrase(&wordlist, &config).await;
     println!("\n{}", "Generated Passphrases:".bold().green());
-    passphrases
-        .iter()
-        .for_each(|passphrase| println!("{}", passphrase.yellow()));
+    passphrases.iter().for_each(|p| println!("{}", p.yellow()));
+
+    if Confirm::with_theme(theme)
+        .with_prompt("Show strength meter?")
+        .default(true)
+        .interact_on(term)?
+    {
+        print_strength_meter(&passphrases);
+    }
 
     if Confirm::with_theme(theme)
         .with_prompt("Show statistics?")
