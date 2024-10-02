@@ -22,7 +22,7 @@ use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
 use error::{PasswordGeneratorError, Result};
 use generator::{
     generate_diceware_passphrase, generate_passwords, generate_pronounceable_passwords,
-    mutate_password,
+    mutate_password, MutationType,
 };
 use stats::show_stats;
 use strength::{evaluate_password_strength, get_strength_bar, get_strength_feedback};
@@ -119,7 +119,8 @@ async fn main() -> Result<()> {
             Arg::new("mutation_type")
                 .long("mutation-type")
                 .help("Type of mutation to apply")
-                .default_value("default"),
+                .value_parser(value_parser!(MutationType))
+                .default_value("replace"),
         )
         .arg(
             Arg::new("mutation_strength")
@@ -286,9 +287,10 @@ async fn handle_mutation(
         .collect();
 
     let lengthen = matches.get_one::<usize>("lengthen").unwrap_or(&0);
-    let _mutation_type = matches
-        .get_one::<String>("mutation_type")
-        .unwrap_or(&"default".to_string());
+
+    let mutation_type = matches
+        .get_one::<MutationType>("mutation_type")
+        .unwrap_or(&MutationType::Replace);
 
     let passwords_clone = passwords.clone();
 
@@ -296,7 +298,7 @@ async fn handle_mutation(
     for password in passwords {
         let mutated = mutate_password(&password, config, *lengthen);
         println!("Original: {}", password.yellow());
-        println!("Mutated:  {}", mutated.green());
+        println!("Mutated:  {} (using {})", mutated.green(), mutation_type);
         println!();
     }
 
