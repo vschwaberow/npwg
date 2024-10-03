@@ -4,12 +4,15 @@ npwg is a secure password generator written in Rust. With npwg, you can easily g
 
 ## Features
 
-- Generate passwords with custom length
-- Support various predefined character sets
-- Generate multiple passwords at once
-- Generate diceware passphrases
+- Generate passwords with custom length and count
+- Support various defined character sets
+- Generate diceware passwords
+- Generate pronounceable passwords
+- Customizable password length, count, character sets, and separators
 - Avoid repeating characters in passwords
 - Display statistics about the generated passwords
+- Show the estimated strength of the generated passwords
+- Interactive mode for easy password generation
 
 ## Installation
 
@@ -48,15 +51,20 @@ npwg [OPTIONS]
 
 ### Options
 
-- `-l, --length <LENGTH>`: Sets the length of the password (or number of words for passphrases) [default: 16]
+- `-l, --length <LENGTH>`: Sets the length of the password [default: 16]
 - `-c, --count <COUNT>`: Sets the number of passwords to generate [default: 1]
 - `--avoid-repeating`: Avoid repeating characters in the password
 - `--stats`: Show statistics about the generated passwords
-- `--strength`: Show the estimated strength of the generated passwords
-- `-a, --allowed <CHARS>`: Sets the allowed characters (comma-separated list of predefined sets) [default: allprint]
-- `--use-words`: Use words instead of characters (generate diceware passphrases)
-- `--separator <SEPARATOR>`: Sets the separator for diceware passphrases. Can be a single character or 'random'. Only applicable with --use-words. [default: space]
-- `-i --interactive`: Interactive mode, use a small console based gui to lead through the process
+- `--strength`: Show strength meter for the generated passwords
+- `-a, --allowed <CHARS>`: Sets the allowed characters [default: allprint]
+- `--use-words`: Use words instead of characters
+- `-i, --interactive`: Start interactive console mode
+- `--separator <SEPARATOR>`: Sets the separator for diceware passphrases (single character or 'random')
+- `--pronounceable`: Generate pronounceable passwords
+- `--mutate`: Mutate the passwords
+- `--mutation-type <TYPE>`: Type of mutation to apply [default: replace]
+- `--mutation-strength <STRENGTH>`: Strength of mutation [default: 1]
+- `--lengthen <INCREASE>`: Increase the length of passwords during mutation
 - `-h, --help`: Print help
 - `-V, --version`: Print version
 
@@ -107,6 +115,21 @@ Generate a diceware passphrase:
 npwg --use-words -l 6
 ```
 
+Generate a diceware passphrase with a custom separator:
+```sh
+npwg --use-words --separator "-" -l 6
+```
+
+Generate a diceware passphrase with random separators:
+```sh
+npwg --use-words --separator random -l 6
+```
+
+Generate a pronounceable password:
+```sh
+npwg --pronounceable
+```
+
 Generate a password and display statistics:
 ```sh
 npwg --stats
@@ -137,6 +160,11 @@ npwg --use-words --separator "-" -l 6
 Generate a diceware passphrase with random separators:
 ```sh
 npwg --use-words --separator random -l 6
+```
+
+Mutate an existing password:
+```sh
+npwg --mutate --mutation-type replace --mutation-strength 3
 ```
 
 ## Contributing
