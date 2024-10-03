@@ -292,11 +292,13 @@ async fn handle_mutation(
         .get_one::<MutationType>("mutation_type")
         .unwrap_or(&MutationType::Replace);
 
+    let mutation_strength = matches.get_one::<u32>("mutation_strength").unwrap_or(&1);
+
     let passwords_clone = passwords.clone();
 
     println!("\n{}", "Mutated Passwords:".bold().green());
     for password in passwords {
-        let mutated = mutate_password(&password, config, *lengthen);
+        let mutated = mutate_password(&password, config, *lengthen, *mutation_strength);
         println!("Original: {}", password.yellow());
         println!("Mutated:  {} (using {})", mutated.green(), mutation_type);
         println!();
@@ -521,11 +523,37 @@ async fn mutate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Resu
         .default(0)
         .interact_on(term)?;
 
-    let mutated = mutate_password(&password, &config, lengthen);
+    let mutation_strength: u32 = Input::with_theme(theme)
+        .with_prompt("Enter mutation strength (1-10)")
+        .validate_with(|input: &u32| {
+            if *input >= 1 && *input <= 10 {
+                Ok(())
+            } else {
+                Err("Please enter a number between 1 and 10")
+            }
+        })
+        .default(1)
+        .interact_on(term)?;
+
+    let mutation_types = vec![
+        MutationType::Replace,
+        MutationType::Insert,
+        MutationType::Remove,
+        MutationType::Swap,
+        MutationType::Shift,
+    ];
+    let mutation_type_index = Select::with_theme(theme)
+        .with_prompt("Select mutation type")
+        .items(&mutation_types)
+        .default(0)
+        .interact_on(term)?;
+    let mutation_type = &mutation_types[mutation_type_index];
+
+    let mutated = mutate_password(&password, &config, lengthen, mutation_strength);
 
     println!("\n{}", "Mutated Password:".bold().green());
     println!("Original: {}", password.yellow());
-    println!("Mutated:  {}", mutated.green());
+    println!("Mutated:  {} (using {:?})", mutated.green(), mutation_type);
 
     if Confirm::with_theme(theme)
         .with_prompt("Show strength meter?")

@@ -164,10 +164,12 @@ pub fn mutate_password(
     password: &str,
     config: &PasswordGeneratorConfig,
     lengthen: usize,
+    mutation_strength: u32,
 ) -> String {
     let mut rng = rand::thread_rng();
     let mut mutated = password.to_string();
-    let mutation_count = (password.len() as f64 * 0.2).ceil() as usize;
+    let mutation_count =
+        (password.len() as f64 * (mutation_strength as f64 / 10.0)).ceil() as usize;
 
     for _ in 0..mutation_count {
         let index = rng.gen_range(0..mutated.len());
@@ -203,7 +205,7 @@ pub fn mutate_password(
                 }
             }
             MutationType::Shift => {
-                let shift_factor = rng.gen_range(1..26);
+                let shift_factor = rng.gen_range(1..50);
                 mutated = shift_and_encode(&mutated, shift_factor);
             }
         }
