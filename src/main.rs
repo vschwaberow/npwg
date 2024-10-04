@@ -22,7 +22,7 @@ use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
 use error::{PasswordGeneratorError, Result};
 use generator::{
     generate_diceware_passphrase, generate_passwords, generate_pronounceable_passwords,
-    mutate_password,
+    mutate_password, MutationType,
 };
 use stats::show_stats;
 use strength::{evaluate_password_strength, get_strength_bar, get_strength_feedback};
@@ -119,7 +119,8 @@ async fn main() -> Result<()> {
             Arg::new("mutation_type")
                 .long("mutation-type")
                 .help("Type of mutation to apply")
-                .default_value("default"),
+                .value_parser(value_parser!(MutationType))
+                .default_value("replace"),
         )
         .arg(
             Arg::new("mutation_strength")
@@ -286,17 +287,21 @@ async fn handle_mutation(
         .collect();
 
     let lengthen = matches.get_one::<usize>("lengthen").unwrap_or(&0);
-    let _mutation_type = matches
-        .get_one::<String>("mutation_type")
-        .unwrap_or(&"default".to_string());
+
+    let mutation_type = matches
+        .get_one::<MutationType>("mutation_type")
+        .unwrap_or(&MutationType::Replace);
+
+    let mutation_strength = matches.get_one::<u32>("mutation_strength").unwrap_or(&1);
+
 
     let passwords_clone = passwords.clone();
 
     println!("\n{}", "Mutated Passwords:".bold().green());
     for password in passwords {
-        let mutated = mutate_password(&password, config, *lengthen);
+        let mutated = mutate_password(&password, config, *lengthen, *mutation_strength);
         println!("Original: {}", password.yellow());
-        println!("Mutated:  {}", mutated.green());
+        println!("Mutated:  {} (using {})", mutated.green(), mutation_type);
         println!();
     }
 
@@ -519,11 +524,37 @@ async fn mutate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Resu
         .default(0)
         .interact_on(term)?;
 
-    let mutated = mutate_password(&password, &config, lengthen);
+    let mutation_strength: u32 = Input::with_theme(theme)
+        .with_prompt("Enter mutation strength (1-10)")
+        .validate_with(|input: &u32| {
+            if *input >= 1 && *input <= 10 {
+                Ok(())
+            } else {
+                Err("Please enter a number between 1 and 10")
+            }
+        })
+        .default(1)
+        .interact_on(term)?;
+
+    let mutation_types = vec![
+        MutationType::Replace,
+        MutationType::Insert,
+        MutationType::Remove,
+        MutationType::Swap,
+        MutationType::Shift,
+    ];
+    let mutation_type_index = Select::with_theme(theme)
+        .with_prompt("Select mutation type")
+        .items(&mutation_types)
+        .default(0)
+        .interact_on(term)?;
+    let mutation_type = &mutation_types[mutation_type_index];
+
+    let mutated = mutate_password(&password, &config, lengthen, mutation_strength);
 
     println!("\n{}", "Mutated Password:".bold().green());
     println!("Original: {}", password.yellow());
-    println!("Mutated:  {}", mutated.green());
+    println!("Mutated:  {} (using {:?})", mutated.green(), mutation_type);
 
     if Confirm::with_theme(theme)
         .with_prompt("Show strength meter?")
