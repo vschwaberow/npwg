@@ -294,6 +294,7 @@ async fn handle_mutation(
 
     let mutation_strength = matches.get_one::<u32>("mutation_strength").unwrap_or(&1);
 
+
     let passwords_clone = passwords.clone();
 
     println!("\n{}", "Mutated Passwords:".bold().green());
