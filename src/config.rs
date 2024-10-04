@@ -134,3 +134,79 @@ impl PasswordGeneratorConfig {
         };
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_set_allowed_chars() {
+        let mut config = PasswordGeneratorConfig::new();
+
+        config.set_allowed_chars("digit");
+        assert_eq!(
+            config.allowed_chars,
+            "0123456789".chars().collect::<Vec<char>>()
+        );
+
+        config.set_allowed_chars("lowerletter");
+        assert_eq!(
+            config.allowed_chars,
+            "abcdefghijklmnopqrstuvwxyz".chars().collect::<Vec<char>>()
+        );
+
+        config.set_allowed_chars("invalid_charset");
+        let allprint_chars: Vec<char> = DEFINE
+            .iter()
+            .find(|&&(name, _)| name == "allprint")
+            .map(|&(_, chars)| chars.chars().collect())
+            .unwrap();
+        assert_eq!(config.allowed_chars, allprint_chars);
+
+        config.set_allowed_chars("allprint");
+        assert_eq!(config.allowed_chars, allprint_chars);
+
+        config.set_allowed_chars("homoglyph1");
+        assert_eq!(config.allowed_chars, "71lI|".chars().collect::<Vec<char>>());
+
+        config.set_allowed_chars("");
+        assert_eq!(config.allowed_chars, allprint_chars);
+    }
+
+    #[test]
+    fn test_add_allowed_chars() {
+        let mut config = PasswordGeneratorConfig::new();
+
+        config.clear_allowed_chars();
+        assert!(config.allowed_chars.is_empty());
+
+        config.add_allowed_chars("lowerletter");
+        assert_eq!(
+            config.allowed_chars.iter().collect::<String>(),
+            "abcdefghijklmnopqrstuvwxyz"
+        );
+
+        config.add_allowed_chars("upperletter");
+        assert_eq!(
+            {
+                let mut chars: Vec<char> = config.allowed_chars.iter().cloned().collect();
+                chars.sort_unstable();
+                chars.into_iter().collect::<String>()
+            },
+            {
+                let mut chars: Vec<char> = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                    .chars()
+                    .collect();
+                chars.sort_unstable();
+                chars.into_iter().collect::<String>()
+            }
+        );
+
+        let before_invalid = config.allowed_chars.clone();
+        config.add_allowed_chars("invalid_charset");
+        assert_eq!(config.allowed_chars, before_invalid);
+
+        config.add_allowed_chars("");
+        assert_eq!(config.allowed_chars, before_invalid);
+    }
+}

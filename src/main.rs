@@ -9,11 +9,12 @@ mod diceware;
 mod error;
 mod generator;
 mod stats;
+mod strength;
 
 use std::process;
 
 use crate::config::DEFINE;
-use clap::{value_parser, Arg, ArgAction, Command};
+use clap::{value_parser, Arg, ArgAction, ArgGroup, Command};
 use colored::*;
 use config::{PasswordGeneratorConfig, PasswordGeneratorMode, Separator};
 use console::Term;
@@ -21,8 +22,10 @@ use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
 use error::{PasswordGeneratorError, Result};
 use generator::{
     generate_diceware_passphrase, generate_passwords, generate_pronounceable_passwords,
+    mutate_password, MutationType,
 };
 use stats::show_stats;
+use strength::{evaluate_password_strength, get_strength_bar, get_strength_feedback};
 use zeroize::Zeroize;
 
 #[tokio::main]
@@ -62,6 +65,17 @@ async fn main() -> Result<()> {
                 .action(ArgAction::SetTrue),
         )
         .arg(
+            Arg::new("strength")
+                .long("strength")
+                .help("Show strength meter for the generated passwords")
+                .action(ArgAction::SetTrue),
+        )
+        .group(
+            ArgGroup::new("output_options")
+                .args(["stats", "strength"])
+                .multiple(true),
+        )
+        .arg(
             Arg::new("allowed")
                 .short('a')
                 .long("allowed")
@@ -95,6 +109,32 @@ async fn main() -> Result<()> {
                 .help("Generate pronounceable passwords")
                 .action(ArgAction::SetTrue),
         )
+        .arg(
+            Arg::new("mutate")
+                .long("mutate")
+                .help("Mutate the passwords")
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("mutation_type")
+                .long("mutation-type")
+                .help("Type of mutation to apply")
+                .value_parser(value_parser!(MutationType))
+                .default_value("replace"),
+        )
+        .arg(
+            Arg::new("mutation_strength")
+                .long("mutation-strength")
+                .help("Strength of mutation")
+                .default_value("1"),
+        )
+        .arg(
+            Arg::new("lengthen")
+                .long("lengthen")
+                .value_name("INCREASE")
+                .help("Increase the length of passwords during mutation")
+                .value_parser(value_parser!(usize)),
+        )
         .get_matches();
 
     if matches.get_flag("interactive") {
@@ -103,13 +143,17 @@ async fn main() -> Result<()> {
 
     let config = build_config(&matches)?;
 
-    match config.mode {
-        PasswordGeneratorMode::Diceware => handle_diceware(&config, &matches).await,
-        PasswordGeneratorMode::Password => {
-            if config.pronounceable {
-                handle_pronounceable(&config, &matches).await
-            } else {
-                handle_password(&config, &matches).await
+    if matches.get_flag("mutate") {
+        handle_mutation(&config, &matches).await
+    } else {
+        match config.mode {
+            PasswordGeneratorMode::Diceware => handle_diceware(&config, &matches).await,
+            PasswordGeneratorMode::Password => {
+                if config.pronounceable {
+                    handle_pronounceable(&config, &matches).await
+                } else {
+                    handle_password(&config, &matches).await
+                }
             }
         }
     }
@@ -182,6 +226,10 @@ async fn handle_diceware(
     let passphrases = generate_diceware_passphrase(&wordlist, config).await;
     passphrases.iter().for_each(|p| println!("{}", p.green()));
 
+    if matches.get_flag("strength") {
+        print_strength_meter(&passphrases);
+    }
+
     if matches.get_flag("stats") {
         print_stats(&passphrases);
     }
@@ -195,6 +243,10 @@ async fn handle_password(
 ) -> Result<()> {
     let passwords = generate_passwords(config).await;
     passwords.iter().for_each(|p| println!("{}", p.green()));
+
+    if matches.get_flag("strength") {
+        print_strength_meter(&passwords);
+    }
 
     if matches.get_flag("stats") {
         print_stats(&passwords);
@@ -211,12 +263,81 @@ async fn handle_pronounceable(
     let passwords = generate_pronounceable_passwords(config).await;
     passwords.iter().for_each(|p| println!("{}", p.green()));
 
+    if matches.get_flag("strength") {
+        print_strength_meter(&passwords);
+    }
+
     if matches.get_flag("stats") {
         print_stats(&passwords);
     }
 
     passwords.into_iter().for_each(|mut p| p.zeroize());
     Ok(())
+}
+
+async fn handle_mutation(
+    config: &PasswordGeneratorConfig,
+    matches: &clap::ArgMatches,
+) -> Result<()> {
+    let passwords: Vec<String> = Input::<String>::new()
+        .with_prompt("Enter passwords to mutate (comma-separated)")
+        .interact_text()?
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .collect();
+
+    let lengthen = matches.get_one::<usize>("lengthen").unwrap_or(&0);
+
+    let mutation_type = matches
+        .get_one::<MutationType>("mutation_type")
+        .unwrap_or(&MutationType::Replace);
+
+    let mutation_strength = matches.get_one::<u32>("mutation_strength").unwrap_or(&1);
+
+
+    let passwords_clone = passwords.clone();
+
+    println!("\n{}", "Mutated Passwords:".bold().green());
+    for password in passwords {
+        let mutated = mutate_password(&password, config, *lengthen, *mutation_strength);
+        println!("Original: {}", password.yellow());
+        println!("Mutated:  {} (using {})", mutated.green(), mutation_type);
+        println!();
+    }
+
+    if matches.get_flag("strength") {
+        print_strength_meter(&passwords_clone);
+    }
+
+    if matches.get_flag("stats") {
+        print_stats(&passwords_clone);
+    }
+
+    Ok(())
+}
+
+fn print_strength_meter(data: &[String]) {
+    println!("\n{}", "Password Strength:".blue().bold());
+    for (i, password) in data.iter().enumerate() {
+        let strength = evaluate_password_strength(password);
+        let feedback = get_strength_feedback(strength);
+        let strength_bar = get_strength_bar(strength);
+        println!(
+            "Password {}: {} {:.2} {} {}",
+            i + 1,
+            strength_bar,
+            strength,
+            feedback.color(match &*feedback {
+                "Very Weak" => "red",
+                "Weak" => "yellow",
+                "Moderate" => "blue",
+                "Strong" => "green",
+                "Very Strong" => "bright green",
+                _ => "white",
+            }),
+            password.yellow()
+        );
+    }
 }
 
 fn print_stats(data: &[String]) {
@@ -236,7 +357,12 @@ async fn interactive_mode() -> Result<()> {
         term.clear_screen()?;
         println!("{}", "Welcome to NPWG Interactive Mode!".bold().cyan());
 
-        let options = vec!["Generate Password", "Generate Passphrase", "Exit"];
+        let options = vec![
+            "Generate Password",
+            "Generate Passphrase",
+            "Mutate Password",
+            "Exit",
+        ];
         let selection = Select::with_theme(&theme)
             .with_prompt("What would you like to do?")
             .items(&options)
@@ -247,7 +373,8 @@ async fn interactive_mode() -> Result<()> {
         match selection {
             0 => generate_interactive_password(&term, &theme).await?,
             1 => generate_interactive_passphrase(&term, &theme).await?,
-            2 => break,
+            2 => mutate_interactive_password(&term, &theme).await?,
+            3 => break,
             _ => unreachable!(),
         }
 
@@ -300,9 +427,15 @@ async fn generate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Re
     };
 
     println!("\n{}", "Generated Passwords:".bold().green());
-    passwords
-        .iter()
-        .for_each(|password| println!("{}", password.yellow()));
+    passwords.iter().for_each(|p| println!("{}", p.yellow()));
+
+    if Confirm::with_theme(theme)
+        .with_prompt("Show strength meter?")
+        .default(true)
+        .interact_on(term)?
+    {
+        print_strength_meter(&passwords);
+    }
 
     if Confirm::with_theme(theme)
         .with_prompt("Show statistics?")
@@ -357,9 +490,15 @@ async fn generate_interactive_passphrase(term: &Term, theme: &ColorfulTheme) -> 
 
     let passphrases = generate_diceware_passphrase(&wordlist, &config).await;
     println!("\n{}", "Generated Passphrases:".bold().green());
-    passphrases
-        .iter()
-        .for_each(|passphrase| println!("{}", passphrase.yellow()));
+    passphrases.iter().for_each(|p| println!("{}", p.yellow()));
+
+    if Confirm::with_theme(theme)
+        .with_prompt("Show strength meter?")
+        .default(true)
+        .interact_on(term)?
+    {
+        print_strength_meter(&passphrases);
+    }
 
     if Confirm::with_theme(theme)
         .with_prompt("Show statistics?")
@@ -367,6 +506,70 @@ async fn generate_interactive_passphrase(term: &Term, theme: &ColorfulTheme) -> 
         .interact_on(term)?
     {
         print_stats(&passphrases);
+    }
+
+    Ok(())
+}
+
+async fn mutate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Result<()> {
+    let password: String = Input::with_theme(theme)
+        .with_prompt("Enter the password to mutate")
+        .interact_on(term)?;
+
+    let config = PasswordGeneratorConfig::new();
+    config.validate()?;
+
+    let lengthen: usize = Input::with_theme(theme)
+        .with_prompt("Increase the length of the password")
+        .default(0)
+        .interact_on(term)?;
+
+    let mutation_strength: u32 = Input::with_theme(theme)
+        .with_prompt("Enter mutation strength (1-10)")
+        .validate_with(|input: &u32| {
+            if *input >= 1 && *input <= 10 {
+                Ok(())
+            } else {
+                Err("Please enter a number between 1 and 10")
+            }
+        })
+        .default(1)
+        .interact_on(term)?;
+
+    let mutation_types = vec![
+        MutationType::Replace,
+        MutationType::Insert,
+        MutationType::Remove,
+        MutationType::Swap,
+        MutationType::Shift,
+    ];
+    let mutation_type_index = Select::with_theme(theme)
+        .with_prompt("Select mutation type")
+        .items(&mutation_types)
+        .default(0)
+        .interact_on(term)?;
+    let mutation_type = &mutation_types[mutation_type_index];
+
+    let mutated = mutate_password(&password, &config, lengthen, mutation_strength);
+
+    println!("\n{}", "Mutated Password:".bold().green());
+    println!("Original: {}", password.yellow());
+    println!("Mutated:  {} (using {:?})", mutated.green(), mutation_type);
+
+    if Confirm::with_theme(theme)
+        .with_prompt("Show strength meter?")
+        .default(true)
+        .interact_on(term)?
+    {
+        print_strength_meter(&vec![password.clone(), mutated.clone()]);
+    }
+
+    if Confirm::with_theme(theme)
+        .with_prompt("Show statistics?")
+        .default(false)
+        .interact_on(term)?
+    {
+        print_stats(&vec![password, mutated]);
     }
 
     Ok(())
