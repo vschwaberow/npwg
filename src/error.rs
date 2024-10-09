@@ -19,6 +19,8 @@ pub enum PasswordGeneratorError {
     WordlistDownloaded,
     #[error("Dialoguer error: {0}")]
     DialoguerError(DialoguerError),
+    #[error("{0}")]
+    ClipboardError(String),
 }
 
 impl From<DialoguerError> for PasswordGeneratorError {

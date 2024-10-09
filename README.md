@@ -65,6 +65,7 @@ npwg [OPTIONS]
 - `--mutation-type <TYPE>`: Type of mutation to apply [default: replace]
 - `--mutation-strength <STRENGTH>`: Strength of mutation [default: 1]
 - `--lengthen <INCREASE>`: Increase the length of passwords during mutation
+- `--copy`: Copy the generated password to the clipboard
 - `-h, --help`: Print help
 - `-V, --version`: Print version
 
@@ -165,6 +166,11 @@ npwg --use-words --separator random -l 6
 Mutate an existing password:
 ```sh
 npwg --mutate --mutation-type replace --mutation-strength 3
+```
+
+Generate a password and copy it to the clipboard:
+```sh
+npwg --copy
 ```
 
 ## Contributing
