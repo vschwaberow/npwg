@@ -15,6 +15,7 @@ use std::process;
 
 use crate::config::DEFINE;
 use clap::{value_parser, Arg, ArgAction, ArgGroup, Command};
+use clipboard::{ClipboardContext, ClipboardProvider};
 use colored::*;
 use config::{PasswordGeneratorConfig, PasswordGeneratorMode, Separator};
 use console::Term;
@@ -31,7 +32,7 @@ use zeroize::Zeroize;
 #[tokio::main]
 async fn main() -> Result<()> {
     let matches = Command::new("npwg")
-        .version("0.2.2")
+        .version(clap::crate_version!())
         .author("Volker Schwaberow <volker@schwaberow.de>")
         .about("Generates secure passwords")
         .arg(
@@ -135,6 +136,12 @@ async fn main() -> Result<()> {
                 .help("Increase the length of passwords during mutation")
                 .value_parser(value_parser!(usize)),
         )
+        .arg(
+            Arg::new("copy")
+                .long("copy")
+                .help("Copy the generated password to the clipboard")
+                .action(ArgAction::SetTrue),
+        )
         .get_matches();
 
     if matches.get_flag("interactive") {
@@ -143,16 +150,18 @@ async fn main() -> Result<()> {
 
     let config = build_config(&matches)?;
 
+    let copy = matches.get_flag("copy");
+
     if matches.get_flag("mutate") {
-        handle_mutation(&config, &matches).await
+        handle_mutation(&config, &matches, copy).await
     } else {
         match config.mode {
-            PasswordGeneratorMode::Diceware => handle_diceware(&config, &matches).await,
+            PasswordGeneratorMode::Diceware => handle_diceware(&config, &matches, copy).await,
             PasswordGeneratorMode::Password => {
                 if config.pronounceable {
-                    handle_pronounceable(&config, &matches).await
+                    handle_pronounceable(&config, &matches, copy).await
                 } else {
-                    handle_password(&config, &matches).await
+                    handle_password(&config, &matches, copy).await
                 }
             }
         }
@@ -213,6 +222,7 @@ fn build_config(matches: &clap::ArgMatches) -> Result<PasswordGeneratorConfig> {
 async fn handle_diceware(
     config: &PasswordGeneratorConfig,
     matches: &clap::ArgMatches,
+    copy: bool,
 ) -> Result<()> {
     let wordlist = match diceware::get_wordlist().await {
         Ok(list) => list,
@@ -225,6 +235,11 @@ async fn handle_diceware(
 
     let passphrases = generate_diceware_passphrase(&wordlist, config).await;
     passphrases.iter().for_each(|p| println!("{}", p.green()));
+
+    if copy && !passphrases.is_empty() {
+        copy_to_clipboard(&passphrases.join("\n"))?;
+        println!("{}", "Passphrase(s) copied to clipboard.".bold().green());
+    }
 
     if matches.get_flag("strength") {
         print_strength_meter(&passphrases);
@@ -240,9 +255,15 @@ async fn handle_diceware(
 async fn handle_password(
     config: &PasswordGeneratorConfig,
     matches: &clap::ArgMatches,
+    copy: bool,
 ) -> Result<()> {
     let passwords = generate_passwords(config).await;
     passwords.iter().for_each(|p| println!("{}", p.green()));
+
+    if copy && !passwords.is_empty() {
+        copy_to_clipboard(&passwords.join("\n"))?;
+        println!("{}", "Password(s) copied to clipboard.".bold().green());
+    }
 
     if matches.get_flag("strength") {
         print_strength_meter(&passwords);
@@ -259,9 +280,15 @@ async fn handle_password(
 async fn handle_pronounceable(
     config: &PasswordGeneratorConfig,
     matches: &clap::ArgMatches,
+    copy: bool,
 ) -> Result<()> {
     let passwords = generate_pronounceable_passwords(config).await;
     passwords.iter().for_each(|p| println!("{}", p.green()));
+
+    if copy && !passwords.is_empty() {
+        copy_to_clipboard(&passwords.join("\n"))?;
+        println!("{}", "Passphrase(s) copied to clipboard.".bold().green());
+    }
 
     if matches.get_flag("strength") {
         print_strength_meter(&passwords);
@@ -278,6 +305,7 @@ async fn handle_pronounceable(
 async fn handle_mutation(
     config: &PasswordGeneratorConfig,
     matches: &clap::ArgMatches,
+    copy: bool,
 ) -> Result<()> {
     let passwords: Vec<String> = Input::<String>::new()
         .with_prompt("Enter passwords to mutate (comma-separated)")
@@ -294,7 +322,6 @@ async fn handle_mutation(
 
     let mutation_strength = matches.get_one::<u32>("mutation_strength").unwrap_or(&1);
 
-
     let passwords_clone = passwords.clone();
 
     println!("\n{}", "Mutated Passwords:".bold().green());
@@ -305,6 +332,11 @@ async fn handle_mutation(
         println!();
     }
 
+    if copy && !passwords_clone.is_empty() {
+        copy_to_clipboard(&passwords_clone.join("\n"))?;
+        println!("{}", "Passphrase(s) copied to clipboard.".bold().green());
+    }
+
     if matches.get_flag("strength") {
         print_strength_meter(&passwords_clone);
     }
@@ -313,6 +345,16 @@ async fn handle_mutation(
         print_stats(&passwords_clone);
     }
 
+    Ok(())
+}
+
+fn copy_to_clipboard(text: &str) -> Result<()> {
+    let mut ctx: ClipboardContext = ClipboardProvider::new().map_err(|e| {
+        PasswordGeneratorError::ClipboardError(format!("Failed to access clipboard: {}", e))
+    })?;
+    ctx.set_contents(text.to_owned()).map_err(|e| {
+        PasswordGeneratorError::ClipboardError(format!("Failed to copy to clipboard: {}", e))
+    })?;
     Ok(())
 }
 
