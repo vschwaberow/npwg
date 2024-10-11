@@ -1,6 +1,6 @@
 [package]
 name = "npwg"
-version = "0.3.5"
+version = "0.3.6"
 edition = "2021"
 license = "MIT"
 authors = ["Volker Schwaberow <volker@schwaberow.de>"]
@@ -34,7 +34,7 @@ serde = { version = "1.0.210", features = ["derive"] }
 thiserror = "1.0.63"
 dialoguer = "0.11.0"
 console = "0.15.8"
-clipboard = "0.5.0"
+arboard = { version = "3.4.1", features = ["wl-clipboard-rs"] }
 
 [profile.release]
 opt-level = 3
