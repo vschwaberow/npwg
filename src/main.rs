@@ -11,11 +11,15 @@ mod generator;
 mod stats;
 mod strength;
 
+const DAEMONIZE_ARG: &str = "__internal_daemonize";
+
 use std::process;
 
 use crate::config::DEFINE;
+use arboard::Clipboard;
+#[cfg(target_os = "linux")]
+use arboard::SetExtLinux;
 use clap::{value_parser, Arg, ArgAction, ArgGroup, Command};
-use clipboard::{ClipboardContext, ClipboardProvider};
 use colored::*;
 use config::{PasswordGeneratorConfig, PasswordGeneratorMode, Separator};
 use console::Term;
@@ -29,8 +33,22 @@ use stats::show_stats;
 use strength::{evaluate_password_strength, get_strength_bar, get_strength_feedback};
 use zeroize::Zeroize;
 
+impl From<arboard::Error> for PasswordGeneratorError {
+    fn from(error: arboard::Error) -> Self {
+        PasswordGeneratorError::ClipboardError(error.to_string())
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
+    #[cfg(target_os = "linux")]
+    {
+        use std::env;
+
+        if env::args().any(|arg| arg == DAEMONIZE_ARG) {
+            return copy_to_clipboard("").map(|_| ());
+        }
+    }
     let matches = Command::new("npwg")
         .version(clap::crate_version!())
         .author("Volker Schwaberow <volker@schwaberow.de>")
@@ -349,12 +367,54 @@ async fn handle_mutation(
 }
 
 fn copy_to_clipboard(text: &str) -> Result<()> {
-    let mut ctx: ClipboardContext = ClipboardProvider::new().map_err(|e| {
-        PasswordGeneratorError::ClipboardError(format!("Failed to access clipboard: {}", e))
-    })?;
-    ctx.set_contents(text.to_owned()).map_err(|e| {
-        PasswordGeneratorError::ClipboardError(format!("Failed to copy to clipboard: {}", e))
-    })?;
+    #[cfg(target_os = "linux")]
+    {
+        use std::{env, process};
+
+        if env::args().any(|arg| arg == DAEMONIZE_ARG) {
+            let text = env::var("CLIPBOARD_TEXT").map_err(|_| {
+                PasswordGeneratorError::ClipboardError(
+                    "Failed to read CLIPBOARD_TEXT environment variable".to_string(),
+                )
+            })?;
+            Clipboard::new()?.set().wait().text(text).map_err(|e| {
+                PasswordGeneratorError::ClipboardError(format!(
+                    "Failed to copy to clipboard: {}",
+                    e
+                ))
+            })?;
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(1));
+            }
+        } else {
+            process::Command::new(env::current_exe()?)
+                .arg(DAEMONIZE_ARG)
+                .stdin(process::Stdio::null())
+                .stdout(process::Stdio::null())
+                .stderr(process::Stdio::null())
+                .env("CLIPBOARD_TEXT", text)
+                .current_dir("/")
+                .spawn()
+                .map_err(|e| {
+                    PasswordGeneratorError::ClipboardError(format!(
+                        "Failed to spawn daemon process: {}",
+                        e
+                    ))
+                })?;
+        }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let mut clipboard = Clipboard::new().map_err(|e| {
+            PasswordGeneratorError::ClipboardError(format!("Failed to access clipboard: {}", e))
+        })?;
+
+        clipboard.set_text(text.to_owned()).map_err(|e| {
+            PasswordGeneratorError::ClipboardError(format!("Failed to copy to clipboard: {}", e))
+        })?;
+    }
+
     Ok(())
 }
 
