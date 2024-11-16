@@ -19,15 +19,15 @@ path = "src/main.rs"
 
 [dependencies]
 rand = { version = "0.8.5", features = ["std", "small_rng"] }
-regex = "1.11.0"
+regex = "1.11.1"
 chacha20 = { version = "0.9.1", features = ["std", "zeroize"] }
 clap = { version = "4.5.19", features = ["cargo", "env", "derive"] }
 zeroize = "1.8.1"
-tokio = { version = "1.39.3", features = ["full"] }
+tokio = { version = "1.41.0", features = ["full"] }
 dashmap = "6.1.0"
 rand_distr = "0.4"
 dirs = "5.0.1"
-reqwest = { version = "0.12.8", features = ["blocking"] }
+reqwest = { version = "0.12.9", features = ["blocking"] }
 futures = "0.3.31"
 colored = "2.1.0"
 serde = { version = "1.0.210", features = ["derive"] }
