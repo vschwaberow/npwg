@@ -33,7 +33,7 @@ colored = "2.1.0"
 serde = { version = "1.0.215", features = ["derive"] }
 thiserror = "2.0.3"
 dialoguer = "0.11.0"
-console = "0.15.8"
+console = "0.15.10"
 arboard = { version = "3.4.1", features = ["wl-clipboard-rs"] }
 
 [profile.release]
