@@ -160,6 +160,18 @@ async fn main() -> Result<()> {
                 .help("Copy the generated password to the clipboard")
                 .action(ArgAction::SetTrue),
         )
+        .arg(
+            Arg::new("pattern")
+                .short('p')
+                .long("pattern")
+                .help("Pattern for password generation (e.g., LLDDS)")
+                .value_parser(value_parser!(String)),
+        )
+        .group(
+            ArgGroup::new("generation")
+                .args(["pattern", "length", "count", "avoid-repeating", "allowed", "use-words", "separator", "pronounceable", "mutate", "mutation_type", "mutation_strength", "lengthen"])
+                .required(false),
+        )
         .get_matches();
 
     if matches.get_flag("interactive") {
@@ -232,6 +244,8 @@ fn build_config(matches: &clap::ArgMatches) -> Result<PasswordGeneratorConfig> {
             Some(Separator::Fixed(' '))
         };
     }
+
+    config.pattern = matches.get_one::<String>("pattern").cloned();
 
     config.validate()?;
     Ok(config)
@@ -521,6 +535,15 @@ async fn generate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Re
     config.set_avoid_repeating(avoid_repeating);
     config.pronounceable = pronounceable;
     config.validate()?;
+
+    let pattern = Input::with_theme(theme)
+        .with_prompt("Enter desired pattern or leave empty for no pattern")
+        .default("".to_string())
+        .interact_text()?;
+
+    if !pattern.is_empty() {
+        config.pattern = Some(pattern);
+    }
 
     let passwords = if pronounceable {
         generate_pronounceable_passwords(&config).await
