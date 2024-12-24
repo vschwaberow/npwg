@@ -7,6 +7,7 @@
 use crate::config::PasswordGeneratorConfig;
 use crate::config::Separator;
 use clap::ValueEnum;
+use rand::seq::IteratorRandom;
 use rand::seq::SliceRandom;
 use rand::Rng;
 
@@ -59,20 +60,41 @@ pub async fn generate_password(config: &PasswordGeneratorConfig) -> String {
     available_chars.extend(config.included_chars.iter());
     available_chars.retain(|c| !config.excluded_chars.contains(c));
 
+    if let Some(pattern) = &config.pattern {
+        return generate_with_pattern(pattern, &available_chars, config.length);
+    }
+
     for _ in 0..config.length {
-        if let Some(&ch) = available_chars.choose(&mut rng) {
-            password.push(ch);
-            if config.avoid_repetition {
-                let mut seen = std::collections::HashSet::new();
-                available_chars.retain(|&c| {
-                    if seen.contains(&c) {
-                        false
-                    } else {
-                        seen.insert(c);
-                        true
-                    }
-                });
-            }
+        if let Some(&c) = available_chars.choose(&mut rng) {
+            password.push(c);
+        }
+    }
+
+    password
+}
+
+fn generate_with_pattern(pattern: &str, available_chars: &[char], length: usize) -> String {
+    let mut rng = rand::thread_rng();
+    let mut password = String::with_capacity(length);
+
+    for symbol in pattern.chars() {
+        let char_opt = match symbol {
+            'L' | 'l' => available_chars.iter().filter(|c| c.is_ascii_alphabetic()).choose(&mut rng),
+            'D' | 'd' => available_chars.iter().filter(|c| c.is_ascii_digit()).choose(&mut rng),
+            'S' | 's' => available_chars.iter().filter(|c| !c.is_ascii_alphanumeric()).choose(&mut rng),
+            _ => None,
+        };
+
+        if let Some(&c) = char_opt {
+            password.push(c);
+        } else {
+            password.push(symbol);
+        }
+    }
+
+    while password.len() < length {
+        if let Some(&c) = available_chars.choose(&mut rng) {
+            password.push(c);
         }
     }
 

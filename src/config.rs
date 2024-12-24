@@ -51,6 +51,7 @@ pub enum Separator {
 
 pub struct PasswordGeneratorConfig {
     pub length: usize,
+    pub pattern: Option<String>,
     pub allowed_chars: Vec<char>,
     pub excluded_chars: HashSet<char>,
     pub included_chars: HashSet<char>,
@@ -79,6 +80,7 @@ impl PasswordGeneratorConfig {
             mode: PasswordGeneratorMode::Password,
             separator: None,
             pronounceable: false,
+            pattern: None,
         };
         config.set_allowed_chars("allprint");
         config
