@@ -25,7 +25,7 @@ clap = { version = "4.5.27", features = ["cargo", "env", "derive"] }
 zeroize = "1.8.1"
 tokio = { version = "1.43.0", features = ["full"] }
 dashmap = "6.1.0"
-rand_distr = "0.4"
+rand_distr = "0.5"
 dirs = "6.0.0"
 reqwest = { version = "0.12.12", features = ["blocking"] }
 futures = "0.3.31"
