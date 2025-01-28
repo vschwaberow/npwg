@@ -211,6 +211,7 @@ fn build_config(matches: &clap::ArgMatches) -> Result<PasswordGeneratorConfig> {
     config.length = *matches.get_one::<u8>("length").unwrap() as usize;
     config.num_passwords = *matches.get_one::<u32>("count").unwrap() as usize;
     config.set_avoid_repeating(matches.get_flag("avoid-repeating"));
+    config.seed = matches.get_one::<u64>("seed").copied();
     config.clear_allowed_chars();
 
     let allowed = matches.get_one::<String>("allowed").unwrap();
