@@ -145,7 +145,7 @@ fn get_separator(
 }
 
 pub async fn generate_pronounceable_password(config: &PasswordGeneratorConfig) -> String {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let mut password = String::with_capacity(config.length);
 
     let consonants = "bcdfghjklmnpqrstvwxyz";
