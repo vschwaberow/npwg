@@ -82,6 +82,7 @@ impl PasswordGeneratorConfig {
             separator: None,
             pronounceable: false,
             pattern: None,
+            seed: None,
         };
         config.set_allowed_chars("allprint");
         config
