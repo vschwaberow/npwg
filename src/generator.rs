@@ -113,7 +113,7 @@ pub async fn generate_diceware_passphrase(
     wordlist: &[String],
     config: &PasswordGeneratorConfig,
 ) -> Vec<String> {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let num_passphrases = config.num_passwords;
     let num_words = config.length;
     let mut passphrases = Vec::with_capacity(num_passphrases);
