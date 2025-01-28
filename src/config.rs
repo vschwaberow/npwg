@@ -60,6 +60,7 @@ pub struct PasswordGeneratorConfig {
     pub num_passwords: usize,
     pub separator: Option<Separator>,
     pub pronounceable: bool,
+    pub seed: Option<u64>,
 }
 
 impl Default for PasswordGeneratorConfig {
