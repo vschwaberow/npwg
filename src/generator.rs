@@ -194,8 +194,8 @@ pub fn mutate_password(
         (password.len() as f64 * (mutation_strength as f64 / 10.0)).ceil() as usize;
 
     for _ in 0..mutation_count {
-        let index = rng.gen_range(0..mutated.len());
-        let mutation_type = match rng.gen_range(0..4) {
+        let index = rng.random_range(0..mutated.len());
+        let mutation_type = match rng.random_range(0..4) {
             0 => MutationType::Replace,
             1 => MutationType::Insert,
             2 => MutationType::Remove,
