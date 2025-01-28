@@ -172,6 +172,14 @@ async fn main() -> Result<()> {
                 .args(["pattern", "length", "count", "avoid-repeating", "allowed", "use-words", "separator", "pronounceable", "mutate", "mutation_type", "mutation_strength", "lengthen"])
                 .required(false),
         )
+        .arg(
+            Arg::new("seed")
+                .short('s')
+                .long("seed")
+                .value_name("SEED")
+                .help("Sets the seed for the random number generator")
+                .value_parser(value_parser!(u64)),
+        )
         .get_matches();
 
     if matches.get_flag("interactive") {
