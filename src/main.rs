@@ -169,7 +169,7 @@ async fn main() -> Result<()> {
         )
         .group(
             ArgGroup::new("generation")
-                .args(["pattern", "length", "count", "avoid-repeating", "allowed", "use-words", "separator", "pronounceable", "mutate", "mutation_type", "mutation_strength", "lengthen"])
+                .args(["pattern", "avoid-repeating", "allowed", "use-words", "separator", "pronounceable", "mutate", "mutation_type", "mutation_strength", "lengthen"])
                 .required(false),
         )
         .arg(
