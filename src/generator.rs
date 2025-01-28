@@ -8,7 +8,6 @@ use crate::config::PasswordGeneratorConfig;
 use crate::config::Separator;
 use clap::ValueEnum;
 use rand::seq::IteratorRandom;
-use rand::seq::SliceRandom;
 use rand::Rng;
 
 const DEFAULT_SEPARATORS: &[char] = &[
