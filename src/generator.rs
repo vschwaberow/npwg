@@ -73,7 +73,7 @@ pub async fn generate_password(config: &PasswordGeneratorConfig) -> String {
 }
 
 fn generate_with_pattern(pattern: &str, available_chars: &[char], length: usize) -> String {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let mut password = String::with_capacity(length);
 
     for symbol in pattern.chars() {
