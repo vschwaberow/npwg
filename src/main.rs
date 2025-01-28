@@ -169,8 +169,16 @@ async fn main() -> Result<()> {
         )
         .group(
             ArgGroup::new("generation")
-                .args(["pattern", "length", "count", "avoid-repeating", "allowed", "use-words", "separator", "pronounceable", "mutate", "mutation_type", "mutation_strength", "lengthen"])
+                .args(["pattern", "avoid-repeating", "allowed", "use-words", "separator", "pronounceable", "mutate", "mutation_type", "mutation_strength", "lengthen"])
                 .required(false),
+        )
+        .arg(
+            Arg::new("seed")
+                .short('s')
+                .long("seed")
+                .value_name("SEED")
+                .help("Sets the seed for the random number generator")
+                .value_parser(value_parser!(u64)),
         )
         .get_matches();
 
@@ -203,6 +211,7 @@ fn build_config(matches: &clap::ArgMatches) -> Result<PasswordGeneratorConfig> {
     config.length = *matches.get_one::<u8>("length").unwrap() as usize;
     config.num_passwords = *matches.get_one::<u32>("count").unwrap() as usize;
     config.set_avoid_repeating(matches.get_flag("avoid-repeating"));
+    config.seed = matches.get_one::<u64>("seed").copied();
     config.clear_allowed_chars();
 
     let allowed = matches.get_one::<String>("allowed").unwrap();

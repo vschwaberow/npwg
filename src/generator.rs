@@ -7,9 +7,10 @@
 use crate::config::PasswordGeneratorConfig;
 use crate::config::Separator;
 use clap::ValueEnum;
+use rand::seq::IndexedRandom;
 use rand::seq::IteratorRandom;
-use rand::seq::SliceRandom;
-use rand::Rng;
+use rand::{Rng, SeedableRng};
+use rand::rngs::StdRng;
 
 const DEFAULT_SEPARATORS: &[char] = &[
     'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's',
@@ -53,7 +54,10 @@ impl std::str::FromStr for MutationType {
 }
 
 pub async fn generate_password(config: &PasswordGeneratorConfig) -> String {
-    let mut rng = rand::thread_rng();
+    let mut rng =  match config.seed {
+        Some(seed) => StdRng::seed_from_u64(seed),
+        None => StdRng::from_rng(&mut rand::rng()),
+    };
     let mut password = String::with_capacity(config.length);
 
     let mut available_chars: Vec<char> = config.allowed_chars.clone();
@@ -61,7 +65,7 @@ pub async fn generate_password(config: &PasswordGeneratorConfig) -> String {
     available_chars.retain(|c| !config.excluded_chars.contains(c));
 
     if let Some(pattern) = &config.pattern {
-        return generate_with_pattern(pattern, &available_chars, config.length);
+        return generate_with_pattern(pattern, &available_chars, config.length, config.seed);
     }
 
     for _ in 0..config.length {
@@ -73,8 +77,11 @@ pub async fn generate_password(config: &PasswordGeneratorConfig) -> String {
     password
 }
 
-fn generate_with_pattern(pattern: &str, available_chars: &[char], length: usize) -> String {
-    let mut rng = rand::thread_rng();
+fn generate_with_pattern(pattern: &str, available_chars: &[char], length: usize, seed: Option<u64>) -> String {
+    let mut rng = match seed {
+        Some(seed) => StdRng::seed_from_u64(seed),
+        None => StdRng::from_rng(&mut rand::rng()),
+    };
     let mut password = String::with_capacity(length);
 
     for symbol in pattern.chars() {
@@ -113,7 +120,10 @@ pub async fn generate_diceware_passphrase(
     wordlist: &[String],
     config: &PasswordGeneratorConfig,
 ) -> Vec<String> {
-    let mut rng = rand::thread_rng();
+    let mut rng = match config.seed {
+        Some(seed) => StdRng::seed_from_u64(seed),
+        None => StdRng::from_rng(&mut rand::rng()),
+    };
     let num_passphrases = config.num_passwords;
     let num_words = config.length;
     let mut passphrases = Vec::with_capacity(num_passphrases);
@@ -145,7 +155,10 @@ fn get_separator(
 }
 
 pub async fn generate_pronounceable_password(config: &PasswordGeneratorConfig) -> String {
-    let mut rng = rand::thread_rng();
+    let mut rng = match config.seed {
+        Some(seed) => StdRng::seed_from_u64(seed),
+        None => StdRng::from_rng(&mut rand::rng()),
+    };
     let mut password = String::with_capacity(config.length);
 
     let consonants = "bcdfghjklmnpqrstvwxyz";
@@ -188,14 +201,17 @@ pub fn mutate_password(
     lengthen: usize,
     mutation_strength: u32,
 ) -> String {
-    let mut rng = rand::thread_rng();
+    let mut rng = match config.seed {
+        Some(seed) => StdRng::seed_from_u64(seed),
+        None => StdRng::from_rng(&mut rand::rng()),
+    };
     let mut mutated = password.to_string();
     let mutation_count =
         (password.len() as f64 * (mutation_strength as f64 / 10.0)).ceil() as usize;
 
     for _ in 0..mutation_count {
-        let index = rng.gen_range(0..mutated.len());
-        let mutation_type = match rng.gen_range(0..4) {
+        let index = rng.random_range(0..mutated.len());
+        let mutation_type = match rng.random_range(0..4) {
             0 => MutationType::Replace,
             1 => MutationType::Insert,
             2 => MutationType::Remove,
@@ -227,7 +243,7 @@ pub fn mutate_password(
                 }
             }
             MutationType::Shift => {
-                let shift_factor = rng.gen_range(1..50);
+                let shift_factor = rng.random_range(1..50);
                 mutated = shift_and_encode(&mutated, shift_factor);
             }
         }
@@ -262,7 +278,7 @@ fn random_char() -> char {
     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()"
         .chars()
         .collect::<Vec<char>>()
-        .choose(&mut rand::thread_rng())
+        .choose(&mut rand::rng())
         .copied()
         .unwrap()
 }
