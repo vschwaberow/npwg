@@ -188,7 +188,7 @@ pub fn mutate_password(
     lengthen: usize,
     mutation_strength: u32,
 ) -> String {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let mut mutated = password.to_string();
     let mutation_count =
         (password.len() as f64 * (mutation_strength as f64 / 10.0)).ceil() as usize;
