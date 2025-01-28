@@ -227,7 +227,7 @@ pub fn mutate_password(
                 }
             }
             MutationType::Shift => {
-                let shift_factor = rng.gen_range(1..50);
+                let shift_factor = rng.random_range(1..50);
                 mutated = shift_and_encode(&mutated, shift_factor);
             }
         }
