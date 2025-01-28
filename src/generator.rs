@@ -52,7 +52,7 @@ impl std::str::FromStr for MutationType {
 }
 
 pub async fn generate_password(config: &PasswordGeneratorConfig) -> String {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let mut password = String::with_capacity(config.length);
 
     let mut available_chars: Vec<char> = config.allowed_chars.clone();
