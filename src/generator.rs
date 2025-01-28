@@ -7,6 +7,7 @@
 use crate::config::PasswordGeneratorConfig;
 use crate::config::Separator;
 use clap::ValueEnum;
+use rand::seq::IndexedRandom;
 use rand::seq::IteratorRandom;
 use rand::Rng;
 
