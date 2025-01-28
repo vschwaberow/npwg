@@ -262,7 +262,7 @@ fn random_char() -> char {
     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()"
         .chars()
         .collect::<Vec<char>>()
-        .choose(&mut rand::thread_rng())
+        .choose(&mut rand::rng())
         .copied()
         .unwrap()
 }
