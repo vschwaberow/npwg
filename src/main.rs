@@ -23,8 +23,7 @@ use arboard::SetExtLinux;
 use clap::{value_parser, Arg, ArgAction, ArgGroup, Command};
 use colored::*;
 use config::{PasswordGeneratorConfig, PasswordGeneratorMode, Separator};
-use console::Term;
-use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
+use dialoguer::Input;
 use error::{PasswordGeneratorError, Result};
 use generator::{
     generate_diceware_passphrase, generate_passwords, generate_pronounceable_passwords,
