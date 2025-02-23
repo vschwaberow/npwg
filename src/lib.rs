@@ -10,6 +10,7 @@ pub mod error;
 pub mod generator;
 pub mod stats;
 pub mod strength;
+pub mod interactive;
 
 pub use config::{PasswordGeneratorConfig, PasswordGeneratorMode};
 pub use error::{PasswordGeneratorError, Result};
