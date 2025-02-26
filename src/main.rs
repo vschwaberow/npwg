@@ -30,7 +30,7 @@ use generator::{
     mutate_password, MutationType,
 };
 use stats::show_stats;
-use strength::{evaluate_password_strength, get_strength_bar, get_strength_feedback};
+use strength::{evaluate_password_strength, get_improvement_suggestions, get_strength_bar, get_strength_feedback};
 use zeroize::Zeroize;
 
 impl From<arboard::Error> for PasswordGeneratorError {
@@ -182,7 +182,6 @@ async fn main() -> Result<()> {
         )
         .get_matches();
 
-    // Check for interactive mode and call the function from the interactive module
     if matches.get_flag("interactive") {
         return interactive::interactive_mode().await;
     }
@@ -463,6 +462,17 @@ fn print_strength_meter(data: &[String]) {
             }),
             password.yellow()
         );
+        
+        // Display improvement suggestions for weak to moderate passwords
+        if strength < 0.6 {
+            let suggestions = get_improvement_suggestions(password);
+            if !suggestions.is_empty() {
+                println!("  {}:", "Improvement suggestions".cyan());
+                for suggestion in suggestions {
+                    println!("   • {}", suggestion);
+                }
+            }
+        }
     }
 }
 
