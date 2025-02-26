@@ -12,7 +12,7 @@ use crate::generator::{
     mutate_password, MutationType,
 };
 use crate::stats::show_stats;
-use crate::strength::{evaluate_password_strength, get_strength_bar, get_strength_feedback};
+use crate::strength::{evaluate_password_strength, get_strength_bar, get_strength_feedback, get_improvement_suggestions};
 use colored::Colorize;
 use console::Term;
 use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
@@ -279,6 +279,16 @@ fn print_strength_meter(data: &[String]) {
             }),
             password.yellow()
         );
+        
+        if strength < 0.6 {
+            let suggestions = get_improvement_suggestions(password);
+            if !suggestions.is_empty() {
+                println!("  {}:", "Improvement suggestions".cyan());
+                for suggestion in suggestions {
+                    println!("   • {}", suggestion);
+                }
+            }
+        }
     }
 }
 
