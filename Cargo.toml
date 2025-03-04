@@ -31,7 +31,7 @@ reqwest = { version = "0.12.12", features = ["blocking"] }
 futures = "0.3.31"
 colored = "3.0.0"
 serde = { version = "1.0.217", features = ["derive"] }
-thiserror = "2.0.11"
+thiserror = "2.0.12"
 dialoguer = "0.11.0"
 console = "0.15.11"
 arboard = { version = "3.4.1", features = ["wl-clipboard-rs"] }
