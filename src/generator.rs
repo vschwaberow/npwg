@@ -54,9 +54,9 @@ impl std::str::FromStr for MutationType {
 }
 
 pub async fn generate_password(config: &PasswordGeneratorConfig) -> String {
-    let mut rng =  match config.seed {
+    let mut rng = match config.seed {
         Some(seed) => StdRng::seed_from_u64(seed),
-        None => StdRng::from_rng(&mut rand::rng()),
+        None => StdRng::from_rng(&mut rand::rng()).unwrap_or_else(|_| panic!("Failed to create RNG")),
     };
     let mut password = String::with_capacity(config.length);
 
@@ -80,7 +80,7 @@ pub async fn generate_password(config: &PasswordGeneratorConfig) -> String {
 fn generate_with_pattern(pattern: &str, available_chars: &[char], length: usize, seed: Option<u64>) -> String {
     let mut rng = match seed {
         Some(seed) => StdRng::seed_from_u64(seed),
-        None => StdRng::from_rng(&mut rand::rng()),
+        None => StdRng::from_rng(&mut rand::rng()).expect("Failed to create RNG"),
     };
     let mut password = String::with_capacity(length);
 
@@ -122,7 +122,7 @@ pub async fn generate_diceware_passphrase(
 ) -> Vec<String> {
     let mut rng = match config.seed {
         Some(seed) => StdRng::seed_from_u64(seed),
-        None => StdRng::from_rng(&mut rand::rng()),
+        None => StdRng::from_rng(&mut rand::thread_rng()).expect("Failed to create RNG"),
     };
     let num_passphrases = config.num_passwords;
     let num_words = config.length;
@@ -157,7 +157,7 @@ fn get_separator(
 pub async fn generate_pronounceable_password(config: &PasswordGeneratorConfig) -> String {
     let mut rng = match config.seed {
         Some(seed) => StdRng::seed_from_u64(seed),
-        None => StdRng::from_rng(&mut rand::rng()),
+        None => StdRng::from_rng(&mut rand::thread_rng()).expect("Failed to create RNG"),
     };
     let mut password = String::with_capacity(config.length);
 
@@ -203,7 +203,7 @@ pub fn mutate_password(
 ) -> String {
     let mut rng = match config.seed {
         Some(seed) => StdRng::seed_from_u64(seed),
-        None => StdRng::from_rng(&mut rand::rng()),
+        None => StdRng::from_rng(&mut rand::rng()).expect("Failed to create RNG"),
     };
     let mut mutated = password.to_string();
     let mutation_count =
@@ -275,10 +275,12 @@ fn lengthen_password(password: &str, increase: usize) -> String {
 }
 
 fn random_char() -> char {
+    let mut secure_rng = StdRng::from_rng(rand::thread_rng::rng()).expect("Failed to create RNG");
+    
     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()"
         .chars()
         .collect::<Vec<char>>()
-        .choose(&mut rand::rng())
+        .choose(&mut secure_rng)
         .copied()
         .unwrap()
 }
