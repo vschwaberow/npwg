@@ -6,6 +6,7 @@
 
 use crate::config::PasswordGeneratorConfig;
 use crate::config::Separator;
+use crate::error::{PasswordGeneratorError, Result};
 use clap::ValueEnum;
 use rand::seq::IndexedRandom;
 use rand::seq::IteratorRandom;
@@ -41,7 +42,7 @@ impl std::fmt::Display for MutationType {
 impl std::str::FromStr for MutationType {
     type Err = String;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    fn from_str(s: &str) -> std::result::Result<MutationType, std::string::String> {
         match s.to_lowercase().as_str() {
             "replace" => Ok(MutationType::Replace),
             "insert" => Ok(MutationType::Insert),
@@ -53,7 +54,7 @@ impl std::str::FromStr for MutationType {
     }
 }
 
-pub async fn generate_password(config: &PasswordGeneratorConfig) -> String {
+pub async fn generate_password(config: &PasswordGeneratorConfig) -> Result<String> {
     let mut rng =  match config.seed {
         Some(seed) => StdRng::seed_from_u64(seed),
         None => StdRng::from_rng(&mut rand::rng()),
@@ -63,6 +64,12 @@ pub async fn generate_password(config: &PasswordGeneratorConfig) -> String {
     let mut available_chars: Vec<char> = config.allowed_chars.clone();
     available_chars.extend(config.included_chars.iter());
     available_chars.retain(|c| !config.excluded_chars.contains(c));
+
+    if available_chars.is_empty() {
+        return Err(PasswordGeneratorError::InvalidConfig(
+            "No characters available for generation with the current settings.".to_string()
+        ));
+    }
 
     if let Some(pattern) = &config.pattern {
         return generate_with_pattern(pattern, &available_chars, config.length, config.seed);
@@ -74,10 +81,17 @@ pub async fn generate_password(config: &PasswordGeneratorConfig) -> String {
         }
     }
 
-    password
+    Ok(password)
 }
 
-fn generate_with_pattern(pattern: &str, available_chars: &[char], length: usize, seed: Option<u64>) -> String {
+fn generate_with_pattern(pattern: &str, available_chars: &[char], length: usize, seed: Option<u64>) -> Result<String> {
+
+    if available_chars.is_empty() {
+        return Err(PasswordGeneratorError::InvalidConfig(
+            "No characters available for generation with the current settings.".to_string()
+        ));
+    }
+    
     let mut rng = match seed {
         Some(seed) => StdRng::seed_from_u64(seed),
         None => StdRng::from_rng(&mut rand::rng()),
@@ -105,21 +119,28 @@ fn generate_with_pattern(pattern: &str, available_chars: &[char], length: usize,
         }
     }
 
-    password
+    Ok(password)
 }
 
-pub async fn generate_passwords(config: &PasswordGeneratorConfig) -> Vec<String> {
+pub async fn generate_passwords(config: &PasswordGeneratorConfig) -> Result<Vec<String>> {
     let mut passwords = Vec::with_capacity(config.num_passwords);
     for _ in 0..config.num_passwords {
-        passwords.push(generate_password(config).await);
+        passwords.push(generate_password(config).await?);
     }
-    passwords
+    Ok(passwords)
 }
 
 pub async fn generate_diceware_passphrase(
     wordlist: &[String],
     config: &PasswordGeneratorConfig,
-) -> Vec<String> {
+) -> Result<Vec<String>> {
+
+    if wordlist.is_empty() {
+        return Err(PasswordGeneratorError::InvalidConfig(
+            "Cannot generate diceware passphrase: wordlist is empty.".to_string()
+        ));
+    }
+
     let mut rng = match config.seed {
         Some(seed) => StdRng::seed_from_u64(seed),
         None => StdRng::from_rng(&mut rand::rng()),
@@ -139,7 +160,7 @@ pub async fn generate_diceware_passphrase(
         passphrases.push(passphrase);
     }
 
-    passphrases
+    Ok(passphrases)
 }
 
 fn get_separator(
@@ -154,7 +175,7 @@ fn get_separator(
     }
 }
 
-pub async fn generate_pronounceable_password(config: &PasswordGeneratorConfig) -> String {
+pub async fn generate_pronounceable_password(config: &PasswordGeneratorConfig) -> Result<String> {
     let mut rng = match config.seed {
         Some(seed) => StdRng::seed_from_u64(seed),
         None => StdRng::from_rng(&mut rand::rng()),
@@ -163,6 +184,12 @@ pub async fn generate_pronounceable_password(config: &PasswordGeneratorConfig) -
 
     let consonants = "bcdfghjklmnpqrstvwxyz";
     let vowels = "aeiou";
+    
+    if consonants.is_empty() || vowels.is_empty() {
+        return Err(PasswordGeneratorError::InvalidConfig(
+            "Cannot generate pronounceable password: character sets are empty.".to_string()
+        ));
+    }
 
     while password.len() < config.length {
         if password.len() % 2 == 0 {
@@ -184,15 +211,15 @@ pub async fn generate_pronounceable_password(config: &PasswordGeneratorConfig) -
         }
     }
 
-    password
+    Ok(password)
 }
 
-pub async fn generate_pronounceable_passwords(config: &PasswordGeneratorConfig) -> Vec<String> {
+pub async fn generate_pronounceable_passwords(config: &PasswordGeneratorConfig) -> Result<Vec<String>> {
     let mut passwords = Vec::with_capacity(config.num_passwords);
     for _ in 0..config.num_passwords {
-        passwords.push(generate_pronounceable_password(config).await);
+        passwords.push(generate_pronounceable_password(config).await?);
     }
-    passwords
+    Ok(passwords)
 }
 
 pub fn mutate_password(

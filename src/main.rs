@@ -274,7 +274,7 @@ async fn handle_diceware(
         Err(e) => return Err(e),
     };
 
-    let passphrases = generate_diceware_passphrase(&wordlist, config).await;
+    let passphrases = generate_diceware_passphrase(&wordlist, config).await?;
     passphrases.iter().for_each(|p| println!("{}", p.green()));
 
     if copy && !passphrases.is_empty() {
@@ -298,7 +298,7 @@ async fn handle_password(
     matches: &clap::ArgMatches,
     copy: bool,
 ) -> Result<()> {
-    let passwords = generate_passwords(config).await;
+    let passwords = generate_passwords(config).await?;
     passwords.iter().for_each(|p| println!("{}", p.green()));
 
     if copy && !passwords.is_empty() {
@@ -323,7 +323,7 @@ async fn handle_pronounceable(
     matches: &clap::ArgMatches,
     copy: bool,
 ) -> Result<()> {
-    let passwords = generate_pronounceable_passwords(config).await;
+    let passwords = generate_pronounceable_passwords(config).await?;
     passwords.iter().for_each(|p| println!("{}", p.green()));
 
     if copy && !passwords.is_empty() {

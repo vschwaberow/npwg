@@ -10,6 +10,13 @@ mod tests {
     use crate::config::PasswordGeneratorConfig;
     use crate::generator::{generate_diceware_passphrase, generate_password, generate_passwords};
     use crate::stats::show_stats;
+    
+    async fn generate_diceware_passphrase_test(wordlist: &[String], num_words: usize) -> String {
+        let mut config = PasswordGeneratorConfig::new();
+        config.length = num_words;
+        let results = generate_diceware_passphrase(wordlist, &config).await.unwrap();
+        results.into_iter().next().unwrap_or_default()
+    }
 
     #[tokio::test]
     async fn test_password_generator_config_new() {
@@ -36,7 +43,7 @@ mod tests {
     async fn test_generate_password() {
         let mut config = PasswordGeneratorConfig::new();
         config.set_allowed_chars_default();
-        let password = generate_password(&config).await;
+        let password = generate_password(&config).await.unwrap();
         assert_eq!(password.len(), 8);
     }
 
@@ -50,7 +57,7 @@ mod tests {
             "elderberry".to_string(),
         ];
 
-        let passphrase = generate_diceware_passphrase(&wordlist, 4).await;
+        let passphrase = generate_diceware_passphrase_test(&wordlist, 4).await;
 
         let words: Vec<&str> = passphrase.split_whitespace().collect();
         assert_eq!(words.len(), 4);
@@ -121,7 +128,7 @@ mod tests {
     async fn test_generate_password() {
         let mut config = PasswordGeneratorConfig::new();
         config.set_allowed_chars_default();
-        let password = generate_password(&config).await;
+        let password = generate_password(&config).await.unwrap();
         assert_eq!(password.len(), 8);
     }
 
@@ -135,7 +142,7 @@ mod tests {
             "elderberry".to_string(),
         ];
 
-        let passphrase = generate_diceware_passphrase(&wordlist, 4).await;
+        let passphrase = generate_diceware_passphrase_test(&wordlist, 4).await;
 
         let words: Vec<&str> = passphrase.split_whitespace().collect();
         assert_eq!(words.len(), 4);
@@ -179,6 +186,46 @@ mod tests {
         assert_eq!(stats.variance, 0.0, "Variance should be 0.0 for an empty list");
         assert_eq!(stats.skewness, 0.0, "Skewness should be 0.0 for an empty list");
         assert_eq!(stats.kurtosis, 0.0, "Kurtosis should be 0.0 for an empty list");
+    }
+
+    #[tokio::test]
+    async fn test_generate_password_with_empty_available_chars() {
+        let mut config = PasswordGeneratorConfig::new();
+        config.clear_allowed_chars();
+        
+        let result = generate_password(&config).await;
+        assert!(result.is_err(), "Expected error for empty available_chars");
+        
+        if let Err(err) = result {
+            match err {
+                PasswordGeneratorError::InvalidConfig(_) => {
+                    assert!(true);
+                }
+                _ => {
+                    panic!("Expected InvalidConfig error, got {:?}", err);
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_generate_password_with_all_chars_excluded() {
+        let mut config = PasswordGeneratorConfig::new();
+        config.set_allowed_chars("digit");        
+        config.excluded_chars.extend("0123456789".chars());
+        let result = generate_password(&config).await;
+        assert!(result.is_err(), "Expected error when all chars are excluded");
+        
+        if let Err(err) = result {
+            match err {
+                PasswordGeneratorError::InvalidConfig(_) => {
+                    assert!(true);
+                }
+                _ => {
+                    panic!("Expected InvalidConfig error, got {:?}", err);
+                }
+            }
+        }
     }
 }
 

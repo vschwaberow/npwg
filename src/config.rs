@@ -133,6 +133,15 @@ impl PasswordGeneratorConfig {
                 "Number of passwords must be greater than 0".to_string(),
             ));
         }
+
+        if !self.excluded_chars.is_empty()
+            && self.allowed_chars.iter().all(|c| self.excluded_chars.contains(c))
+        {
+            return Err(PasswordGeneratorError::InvalidConfig(
+                "All allowed characters are excluded, resulting in an empty character set".to_string(),
+            ));
+        }
+
         Ok(())
     }
     pub fn set_use_words(&mut self, use_words: bool) {

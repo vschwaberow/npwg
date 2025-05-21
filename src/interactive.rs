@@ -101,9 +101,9 @@ async fn generate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Re
     }
 
     let passwords = if pronounceable {
-        generate_pronounceable_passwords(&config).await
+        generate_pronounceable_passwords(&config).await?
     } else {
-        generate_passwords(&config).await
+        generate_passwords(&config).await?
     };
 
     println!("\n{}", "Generated Passwords:".bold().green());
@@ -169,7 +169,7 @@ async fn generate_interactive_passphrase(term: &Term, theme: &ColorfulTheme) -> 
 
     config.validate()?;
 
-    let passphrases = generate_diceware_passphrase(&wordlist, &config).await;
+    let passphrases = generate_diceware_passphrase(&wordlist, &config).await?;
     println!("\n{}", "Generated Passphrases:".bold().green());
     passphrases.iter().for_each(|p| println!("{}", p.yellow()));
 
