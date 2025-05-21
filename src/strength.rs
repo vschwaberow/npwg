@@ -40,7 +40,7 @@ pub fn evaluate_password_strength(password: &str) -> f64 {
 }
 
 /// Calculates Shannon entropy with adjustments for actual character distribution
-fn calculate_entropy(password: &str) -> f64 {
+pub fn calculate_entropy(password: &str) -> f64 {
     if password.is_empty() {
         return 0.0;
     }
@@ -202,7 +202,7 @@ fn check_nist_compliance(password: &str) -> f64 {
 }
 
 /// Determines the theoretical character set size based on character types present
-fn get_theoretical_char_set_size(password: &str) -> usize {
+pub fn get_theoretical_char_set_size(password: &str) -> usize {
     if password.is_empty() {
         return 0;
     }

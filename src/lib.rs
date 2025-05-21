@@ -11,6 +11,8 @@ pub mod generator;
 pub mod stats;
 pub mod strength;
 pub mod interactive;
+#[cfg(test)]
+pub mod tests;
 
 pub use config::{PasswordGeneratorConfig, PasswordGeneratorMode};
 pub use error::{PasswordGeneratorError, Result};

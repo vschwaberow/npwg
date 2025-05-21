@@ -84,7 +84,7 @@ pub async fn generate_password(config: &PasswordGeneratorConfig) -> Result<Strin
     Ok(password)
 }
 
-fn generate_with_pattern(pattern: &str, available_chars: &[char], length: usize, seed: Option<u64>) -> Result<String> {
+pub fn generate_with_pattern(pattern: &str, available_chars: &[char], length: usize, seed: Option<u64>) -> Result<String> {
 
     if available_chars.is_empty() {
         return Err(PasswordGeneratorError::InvalidConfig(
@@ -108,8 +108,6 @@ fn generate_with_pattern(pattern: &str, available_chars: &[char], length: usize,
 
         if let Some(&c) = char_opt {
             password.push(c);
-        } else {
-            password.push(symbol);
         }
     }
 
@@ -308,4 +306,28 @@ fn random_char() -> char {
         .choose(&mut rand::rng())
         .copied()
         .unwrap()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_generate_with_pattern_skip_unfulfillable_chars() {
+        let available_chars: Vec<char> = "abcdefg".chars().collect();
+        let pattern = "LDLS";
+        let length = 10;
+        let seed = None;
+        
+        let result = generate_with_pattern(pattern, &available_chars, length, seed);
+        assert!(result.is_ok(), "Expected successful generation despite unfulfillable pattern");
+        
+        let password = result.unwrap();
+        assert_eq!(password.len(), length, "Password should match the requested length");
+        
+        for c in password.chars() {
+            assert!(available_chars.contains(&c), "Password contains character not in available_chars: {}", c);
+        }        
+        assert!(!password.chars().any(|c| c.is_ascii_digit()), "Password should not contain digits");
+    }
 }
