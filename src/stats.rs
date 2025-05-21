@@ -30,13 +30,13 @@ pub fn show_stats(passwords: &[String]) -> PasswordQuality {
     let mean = entropies.iter().sum::<f64>() / n;
     let variance = entropies.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / n;
 
-    let skewness = if variance == 0.0 {
+    let skewness = if variance < 1e-10 {
         0.0
     } else {
         entropies.iter().map(|&x| (x - mean).powi(3)).sum::<f64>() / (n * variance.powf(1.5))
     };
 
-    let kurtosis = if variance == 0.0 {
+    let kurtosis = if variance < 1e-10 {
         -3.0
     } else {
         (entropies.iter().map(|&x| (x - mean).powi(4)).sum::<f64>() / (n * variance.powi(2))) - 3.0
