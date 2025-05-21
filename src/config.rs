@@ -101,6 +101,11 @@ impl PasswordGeneratorConfig {
     pub fn add_allowed_chars(&mut self, charset_name: &str) {
         if let Some((_, chars)) = DEFINE.iter().find(|(name, _)| *name == charset_name) {
             self.allowed_chars.extend(chars.chars());
+        } else {
+            eprintln!(
+                "Warning: Unknown character set '{}' was ignored in add_allowed_chars.",
+                charset_name
+            );
         }
     }
 
