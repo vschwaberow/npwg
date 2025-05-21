@@ -1,3 +1,9 @@
+// SPDX-License-Identifier: MIT
+// Project: npwg
+// File: src/stats.rs
+// Author: Volker Schwaberow <volker@schwaberow.de>
+// Copyright (c) 2022 Volker Schwaberow
+
 pub struct PasswordQuality {
     pub mean: f64,
     pub variance: f64,
@@ -12,12 +18,29 @@ pub fn show_stats(passwords: &[String]) -> PasswordQuality {
         .collect();
     let n = entropies.len() as f64;
 
+    if n == 0.0 {
+        return PasswordQuality {
+            mean: 0.0,
+            variance: 0.0,
+            skewness: 0.0,
+            kurtosis: 0.0,
+        };
+    }
+
     let mean = entropies.iter().sum::<f64>() / n;
     let variance = entropies.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / n;
-    let skewness =
-        entropies.iter().map(|&x| (x - mean).powi(3)).sum::<f64>() / (n * variance.powf(1.5));
-    let kurtosis =
-        entropies.iter().map(|&x| (x - mean).powi(4)).sum::<f64>() / (n * variance.powi(2)) - 3.0;
+
+    let skewness = if variance == 0.0 {
+        0.0
+    } else {
+        entropies.iter().map(|&x| (x - mean).powi(3)).sum::<f64>() / (n * variance.powf(1.5))
+    };
+
+    let kurtosis = if variance == 0.0 {
+        -3.0
+    } else {
+        (entropies.iter().map(|&x| (x - mean).powi(4)).sum::<f64>() / (n * variance.powi(2))) - 3.0
+    };
 
     PasswordQuality {
         mean,
