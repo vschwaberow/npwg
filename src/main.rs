@@ -274,7 +274,7 @@ async fn handle_diceware(
         Err(e) => return Err(e),
     };
 
-    let passphrases = generate_diceware_passphrase(&wordlist, config).await;
+    let passphrases = generate_diceware_passphrase(&wordlist, config).await?;
     passphrases.iter().for_each(|p| println!("{}", p.green()));
 
     if copy && !passphrases.is_empty() {
@@ -298,7 +298,7 @@ async fn handle_password(
     matches: &clap::ArgMatches,
     copy: bool,
 ) -> Result<()> {
-    let passwords = generate_passwords(config).await;
+    let passwords = generate_passwords(config).await?;
     passwords.iter().for_each(|p| println!("{}", p.green()));
 
     if copy && !passwords.is_empty() {
@@ -323,7 +323,7 @@ async fn handle_pronounceable(
     matches: &clap::ArgMatches,
     copy: bool,
 ) -> Result<()> {
-    let passwords = generate_pronounceable_passwords(config).await;
+    let passwords = generate_pronounceable_passwords(config).await?;
     passwords.iter().for_each(|p| println!("{}", p.green()));
 
     if copy && !passwords.is_empty() {
@@ -357,9 +357,7 @@ async fn handle_mutation(
 
     let lengthen = matches.get_one::<usize>("lengthen").unwrap_or(&0);
 
-    let mutation_type = matches
-        .get_one::<MutationType>("mutation_type")
-        .unwrap_or(&MutationType::Replace);
+    let cli_mutation_type_arg = matches.get_one::<MutationType>("mutation_type");
 
     let mutation_strength = matches.get_one::<u32>("mutation_strength").unwrap_or(&1);
 
@@ -367,9 +365,18 @@ async fn handle_mutation(
 
     println!("\n{}", "Mutated Passwords:".bold().green());
     for password in passwords {
-        let mutated = mutate_password(&password, config, *lengthen, *mutation_strength);
+        let mutated = mutate_password(
+            &password,
+            config,
+            *lengthen,
+            *mutation_strength,
+            cli_mutation_type_arg,
+        );
         println!("Original: {}", password.yellow());
-        println!("Mutated:  {} (using {})", mutated.green(), mutation_type);
+        let mutation_type_display = cli_mutation_type_arg
+            .map(|t| t.to_string())
+            .unwrap_or_else(|| "random".to_string());
+        println!("Mutated:  {} (using {})", mutated.green(), mutation_type_display);
         println!();
     }
 
@@ -463,7 +470,6 @@ fn print_strength_meter(data: &[String]) {
             password.yellow()
         );
         
-        // Display improvement suggestions for weak to moderate passwords
         if strength < 0.6 {
             let suggestions = get_improvement_suggestions(password);
             if !suggestions.is_empty() {

@@ -18,7 +18,6 @@ use console::Term;
 use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
 use zeroize::Zeroize;
 
-// Main interactive mode function
 pub async fn interactive_mode() -> Result<()> {
     let term = Term::stdout();
     let theme = ColorfulTheme::default();
@@ -62,7 +61,6 @@ pub async fn interactive_mode() -> Result<()> {
     Ok(())
 }
 
-// Helper function to generate passwords interactively
 async fn generate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Result<()> {
     let length: u8 = Input::with_theme(theme)
         .with_prompt("Password length")
@@ -101,9 +99,9 @@ async fn generate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Re
     }
 
     let passwords = if pronounceable {
-        generate_pronounceable_passwords(&config).await
+        generate_pronounceable_passwords(&config).await?
     } else {
-        generate_passwords(&config).await
+        generate_passwords(&config).await?
     };
 
     println!("\n{}", "Generated Passwords:".bold().green());
@@ -129,7 +127,6 @@ async fn generate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Re
     Ok(())
 }
 
-// Helper function to generate passphrases interactively
 async fn generate_interactive_passphrase(term: &Term, theme: &ColorfulTheme) -> Result<()> {
     let count: u32 = Input::with_theme(theme)
         .with_prompt("Number of passphrases")
@@ -169,7 +166,7 @@ async fn generate_interactive_passphrase(term: &Term, theme: &ColorfulTheme) -> 
 
     config.validate()?;
 
-    let passphrases = generate_diceware_passphrase(&wordlist, &config).await;
+    let passphrases = generate_diceware_passphrase(&wordlist, &config).await?;
     println!("\n{}", "Generated Passphrases:".bold().green());
     passphrases.iter().for_each(|p| println!("{}", p.yellow()));
 
@@ -192,7 +189,6 @@ async fn generate_interactive_passphrase(term: &Term, theme: &ColorfulTheme) -> 
     Ok(())
 }
 
-// Helper function to mutate passwords interactively
 async fn mutate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Result<()> {
     let password: String = Input::with_theme(theme)
         .with_prompt("Enter the password to mutate")
@@ -232,7 +228,7 @@ async fn mutate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Resu
         .interact_on(term)?;
     let mutation_type = &mutation_types[mutation_type_index];
 
-    let mutated = mutate_password(&password, &config, lengthen, mutation_strength);
+    let mutated = mutate_password(&password, &config, lengthen, mutation_strength, Some(mutation_type));
 
     println!("\n{}", "Mutated Password:".bold().green());
     println!("Original: {}", password.yellow());
@@ -257,7 +253,6 @@ async fn mutate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Resu
     Ok(())
 }
 
-// Helper function to display strength meter
 fn print_strength_meter(data: &[String]) {
     println!("\n{}", "Password Strength:".blue().bold());
     for (i, password) in data.iter().enumerate() {
@@ -292,7 +287,6 @@ fn print_strength_meter(data: &[String]) {
     }
 }
 
-// Helper function to display statistics
 fn print_stats(data: &[String]) {
     let pq = show_stats(data);
     println!("\n{}", "Statistics:".blue().bold());

@@ -27,7 +27,7 @@ pub const DEFINE: &[(&str, &str)] = &[
     ("slashes", "/\\"),
     ("brackets", "[]{}()"),
     ("punctuation", "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"),
-    ("all", "#%&?@!#$%&*+-./:=?@~0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~!\"$&`'71lI|2Z6G:;^`'!|<({[]})>~-/\\[]{}()!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"),
+    ("all", "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"),
     ("allprint", "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"),
     ("allprintnoquote", "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!#$%&()*+,-./:;<=>?@[\\]^_`{|}~"),
     ("allprintnospace", "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"),
@@ -72,7 +72,7 @@ impl Default for PasswordGeneratorConfig {
 impl PasswordGeneratorConfig {
     pub fn new() -> Self {
         let mut config = Self {
-            length: 8,
+            length: 16,
             allowed_chars: Vec::new(),
             excluded_chars: HashSet::new(),
             included_chars: HashSet::new(),
@@ -101,6 +101,11 @@ impl PasswordGeneratorConfig {
     pub fn add_allowed_chars(&mut self, charset_name: &str) {
         if let Some((_, chars)) = DEFINE.iter().find(|(name, _)| *name == charset_name) {
             self.allowed_chars.extend(chars.chars());
+        } else {
+            eprintln!(
+                "Warning: Unknown character set '{}' was ignored in add_allowed_chars.",
+                charset_name
+            );
         }
     }
 
@@ -128,6 +133,15 @@ impl PasswordGeneratorConfig {
                 "Number of passwords must be greater than 0".to_string(),
             ));
         }
+
+        if !self.excluded_chars.is_empty()
+            && self.allowed_chars.iter().all(|c| self.excluded_chars.contains(c))
+        {
+            return Err(PasswordGeneratorError::InvalidConfig(
+                "All allowed characters are excluded, resulting in an empty character set".to_string(),
+            ));
+        }
+
         Ok(())
     }
     pub fn set_use_words(&mut self, use_words: bool) {

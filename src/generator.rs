@@ -6,6 +6,7 @@
 
 use crate::config::PasswordGeneratorConfig;
 use crate::config::Separator;
+use crate::error::{PasswordGeneratorError, Result};
 use clap::ValueEnum;
 use rand::seq::IndexedRandom;
 use rand::seq::IteratorRandom;
@@ -41,7 +42,7 @@ impl std::fmt::Display for MutationType {
 impl std::str::FromStr for MutationType {
     type Err = String;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    fn from_str(s: &str) -> std::result::Result<MutationType, std::string::String> {
         match s.to_lowercase().as_str() {
             "replace" => Ok(MutationType::Replace),
             "insert" => Ok(MutationType::Insert),
@@ -53,7 +54,7 @@ impl std::str::FromStr for MutationType {
     }
 }
 
-pub async fn generate_password(config: &PasswordGeneratorConfig) -> String {
+pub async fn generate_password(config: &PasswordGeneratorConfig) -> Result<String> {
     let mut rng =  match config.seed {
         Some(seed) => StdRng::seed_from_u64(seed),
         None => StdRng::from_rng(&mut rand::rng()),
@@ -63,6 +64,12 @@ pub async fn generate_password(config: &PasswordGeneratorConfig) -> String {
     let mut available_chars: Vec<char> = config.allowed_chars.clone();
     available_chars.extend(config.included_chars.iter());
     available_chars.retain(|c| !config.excluded_chars.contains(c));
+
+    if available_chars.is_empty() {
+        return Err(PasswordGeneratorError::InvalidConfig(
+            "No characters available for generation with the current settings.".to_string()
+        ));
+    }
 
     if let Some(pattern) = &config.pattern {
         return generate_with_pattern(pattern, &available_chars, config.length, config.seed);
@@ -74,10 +81,17 @@ pub async fn generate_password(config: &PasswordGeneratorConfig) -> String {
         }
     }
 
-    password
+    Ok(password)
 }
 
-fn generate_with_pattern(pattern: &str, available_chars: &[char], length: usize, seed: Option<u64>) -> String {
+pub fn generate_with_pattern(pattern: &str, available_chars: &[char], length: usize, seed: Option<u64>) -> Result<String> {
+
+    if available_chars.is_empty() {
+        return Err(PasswordGeneratorError::InvalidConfig(
+            "No characters available for generation with the current settings.".to_string()
+        ));
+    }
+    
     let mut rng = match seed {
         Some(seed) => StdRng::seed_from_u64(seed),
         None => StdRng::from_rng(&mut rand::rng()),
@@ -94,8 +108,6 @@ fn generate_with_pattern(pattern: &str, available_chars: &[char], length: usize,
 
         if let Some(&c) = char_opt {
             password.push(c);
-        } else {
-            password.push(symbol);
         }
     }
 
@@ -105,21 +117,28 @@ fn generate_with_pattern(pattern: &str, available_chars: &[char], length: usize,
         }
     }
 
-    password
+    Ok(password)
 }
 
-pub async fn generate_passwords(config: &PasswordGeneratorConfig) -> Vec<String> {
+pub async fn generate_passwords(config: &PasswordGeneratorConfig) -> Result<Vec<String>> {
     let mut passwords = Vec::with_capacity(config.num_passwords);
     for _ in 0..config.num_passwords {
-        passwords.push(generate_password(config).await);
+        passwords.push(generate_password(config).await?);
     }
-    passwords
+    Ok(passwords)
 }
 
 pub async fn generate_diceware_passphrase(
     wordlist: &[String],
     config: &PasswordGeneratorConfig,
-) -> Vec<String> {
+) -> Result<Vec<String>> {
+
+    if wordlist.is_empty() {
+        return Err(PasswordGeneratorError::InvalidConfig(
+            "Cannot generate diceware passphrase: wordlist is empty.".to_string()
+        ));
+    }
+
     let mut rng = match config.seed {
         Some(seed) => StdRng::seed_from_u64(seed),
         None => StdRng::from_rng(&mut rand::rng()),
@@ -139,7 +158,7 @@ pub async fn generate_diceware_passphrase(
         passphrases.push(passphrase);
     }
 
-    passphrases
+    Ok(passphrases)
 }
 
 fn get_separator(
@@ -154,7 +173,7 @@ fn get_separator(
     }
 }
 
-pub async fn generate_pronounceable_password(config: &PasswordGeneratorConfig) -> String {
+pub async fn generate_pronounceable_password(config: &PasswordGeneratorConfig) -> Result<String> {
     let mut rng = match config.seed {
         Some(seed) => StdRng::seed_from_u64(seed),
         None => StdRng::from_rng(&mut rand::rng()),
@@ -163,6 +182,12 @@ pub async fn generate_pronounceable_password(config: &PasswordGeneratorConfig) -
 
     let consonants = "bcdfghjklmnpqrstvwxyz";
     let vowels = "aeiou";
+    
+    if consonants.is_empty() || vowels.is_empty() {
+        return Err(PasswordGeneratorError::InvalidConfig(
+            "Cannot generate pronounceable password: character sets are empty.".to_string()
+        ));
+    }
 
     while password.len() < config.length {
         if password.len() % 2 == 0 {
@@ -184,15 +209,15 @@ pub async fn generate_pronounceable_password(config: &PasswordGeneratorConfig) -
         }
     }
 
-    password
+    Ok(password)
 }
 
-pub async fn generate_pronounceable_passwords(config: &PasswordGeneratorConfig) -> Vec<String> {
+pub async fn generate_pronounceable_passwords(config: &PasswordGeneratorConfig) -> Result<Vec<String>> {
     let mut passwords = Vec::with_capacity(config.num_passwords);
     for _ in 0..config.num_passwords {
-        passwords.push(generate_pronounceable_password(config).await);
+        passwords.push(generate_pronounceable_password(config).await?);
     }
-    passwords
+    Ok(passwords)
 }
 
 pub fn mutate_password(
@@ -200,85 +225,114 @@ pub fn mutate_password(
     config: &PasswordGeneratorConfig,
     lengthen: usize,
     mutation_strength: u32,
+    forced_mutation_type: Option<&MutationType>,
 ) -> String {
+    if password.is_empty() {
+        return String::new();
+    }
+
     let mut rng = match config.seed {
         Some(seed) => StdRng::seed_from_u64(seed),
         None => StdRng::from_rng(&mut rand::rng()),
     };
     let mut mutated = password.to_string();
-    let mutation_count =
-        (password.len() as f64 * (mutation_strength as f64 / 10.0)).ceil() as usize;
+    let mutation_count = mutation_strength.min(mutated.len() as u32);
 
     for _ in 0..mutation_count {
-        let index = rng.random_range(0..mutated.len());
-        let mutation_type = match rng.random_range(0..4) {
-            0 => MutationType::Replace,
-            1 => MutationType::Insert,
-            2 => MutationType::Remove,
-            3 => MutationType::Swap,
-            _ => unreachable!(),
-        };
+        if mutated.is_empty() {
+            break;
+        }
 
-        match mutation_type {
+        let current_mutation_type = match forced_mutation_type {
+            Some(t) => t.clone(),
+            None => { 
+                match rng.random_range(0..5) {
+                    0 => MutationType::Replace,
+                    1 => MutationType::Insert,
+                    2 => MutationType::Remove,
+                    3 => MutationType::Swap,
+                    4 => MutationType::Shift,
+                    _ => unreachable!(),
+                }
+            }
+        };
+        let index = if mutated.is_empty() { 0 } else { rng.random_range(0..mutated.len()) };
+
+        match current_mutation_type {
             MutationType::Replace => {
-                if let Some(new_char) = config.allowed_chars.choose(&mut rng) {
+                if !mutated.is_empty() {
+                    let char_to_replace = mutated.chars().nth(index).unwrap();
+                    let new_char = config
+                        .allowed_chars
+                        .iter()
+                        .filter(|&&c| c != char_to_replace)
+                        .choose(&mut rng)
+                        .copied()
+                        .unwrap_or(char_to_replace); 
                     mutated.replace_range(index..index + 1, &new_char.to_string());
                 }
             }
             MutationType::Insert => {
-                if let Some(new_char) = config.allowed_chars.choose(&mut rng) {
-                    mutated.insert(index, *new_char);
-                }
+                let new_char = config.allowed_chars.choose(&mut rng).copied().unwrap_or('a');
+                mutated.insert(index, new_char);
             }
             MutationType::Remove => {
-                if mutated.len() > 1 {
+                if !mutated.is_empty() {
                     mutated.remove(index);
                 }
             }
             MutationType::Swap => {
-                if index < mutated.len() - 1 {
-                    let mut chars: Vec<char> = mutated.chars().collect();
-                    chars.swap(index, index + 1);
-                    mutated = chars.into_iter().collect();
+                if mutated.len() > 1 {
+                    let index2 = (index + 1 + rng.random_range(0..mutated.len() - 1)) % mutated.len();
+                    if index != index2 {
+                        let char1 = mutated.chars().nth(index).unwrap();
+                        let char2 = mutated.chars().nth(index2).unwrap();
+                        mutated.replace_range(index..index + 1, &char2.to_string());
+                        mutated.replace_range(index2..index2 + 1, &char1.to_string());
+                    }
                 }
             }
             MutationType::Shift => {
-                let shift_factor = rng.random_range(1..50);
-                mutated = shift_and_encode(&mutated, shift_factor);
+                if mutated.len() > 1 {
+                    let shift_amount = rng.random_range(1..mutated.len());
+                    let (first, second) = mutated.split_at(shift_amount);
+                    mutated = format!("{}{}", second, first);
+                }
             }
         }
     }
 
     if lengthen > 0 {
-        mutated = lengthen_password(&mutated, lengthen);
+        for _ in 0..lengthen {
+            if let Some(&c) = config.allowed_chars.choose(&mut rng) {
+                mutated.push(c);
+            }
+        }
     }
 
     mutated
 }
 
-fn shift_and_encode(password: &str, shift: u8) -> String {
-    password
-        .chars()
-        .map(|c| {
-            let shifted = (c as u8).wrapping_add(shift);
-            (shifted % 95 + 32) as char
-        })
-        .collect()
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-fn lengthen_password(password: &str, increase: usize) -> String {
-    let mut lengthened = password.to_string();
-    for _ in 0..increase {
-        lengthened.push(random_char());
+    #[test]
+    fn test_generate_with_pattern_skip_unfulfillable_chars() {
+        let available_chars: Vec<char> = "abcdefg".chars().collect();
+        let pattern = "LDLS";
+        let length = 10;
+        let seed = None;
+        
+        let result = generate_with_pattern(pattern, &available_chars, length, seed);
+        assert!(result.is_ok(), "Expected successful generation despite unfulfillable pattern");
+        
+        let password = result.unwrap();
+        assert_eq!(password.len(), length, "Password should match the requested length");
+        
+        for c in password.chars() {
+            assert!(available_chars.contains(&c), "Password contains character not in available_chars: {}", c);
+        }        
+        assert!(!password.chars().any(|c| c.is_ascii_digit()), "Password should not contain digits");
     }
-    lengthened
-}
-
-fn random_char() -> char {
-    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()"
-        .chars()
-        .collect::<Vec<char>>()
-        .choose(&mut rand::rng())
-        .copied()
-        .unwrap()
 }

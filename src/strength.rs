@@ -40,37 +40,40 @@ pub fn evaluate_password_strength(password: &str) -> f64 {
 }
 
 /// Calculates Shannon entropy with adjustments for actual character distribution
-fn calculate_entropy(password: &str) -> f64 {
+pub fn calculate_entropy(password: &str) -> f64 {
     if password.is_empty() {
         return 0.0;
     }
-    
-    // Calculate the actual character frequency distribution
-    let mut char_counts: HashMap<char, usize> = HashMap::new();
-    let total_chars = password.len();
-    
+
+    let mut char_counts = HashMap::new();
     for c in password.chars() {
         *char_counts.entry(c).or_insert(0) += 1;
     }
-    
-    // Calculate actual Shannon entropy based on character distribution
+
+    let len = password.len() as f64;
     let mut entropy = 0.0;
-    for (_, count) in char_counts.iter() {
-        let probability = *count as f64 / total_chars as f64;
+    for count in char_counts.values() {
+        let probability = (*count as f64) / len;
         entropy -= probability * probability.log2();
     }
-    
-    // Calculate the theoretical maximum entropy based on character set size
+
     let char_set_size = get_theoretical_char_set_size(password) as f64;
-    let max_entropy = password.len() as f64 * char_set_size.log2();
-    
-    // Normalize the entropy between 0 and 1
-    let normalized_entropy = entropy.min(max_entropy) / 8.0;
-    
-    // Length bonus with diminishing returns
-    let length_factor = (1.0 - (1.0 / (0.3 * password.len() as f64 + 1.0))).min(1.0);
-    
-    (normalized_entropy * 0.7 + length_factor * 0.3).min(1.0)
+
+    if char_set_size == 0.0 {
+        return 0.0;
+    }
+
+    let log2_char_set_size = char_set_size.log2();
+
+    let normalized_entropy = if log2_char_set_size > 0.0 {
+        (entropy / log2_char_set_size).min(1.0)
+    } else {
+        0.0
+    };
+
+    let length_factor = 1.0 - (1.0 / (0.3 * len + 1.0));
+    let weighted_score = normalized_entropy * 0.7 + length_factor * 0.3;
+    weighted_score.max(0.0).min(1.0)
 }
 
 /// Detects common patterns in passwords and returns a penalty score
@@ -199,7 +202,11 @@ fn check_nist_compliance(password: &str) -> f64 {
 }
 
 /// Determines the theoretical character set size based on character types present
-fn get_theoretical_char_set_size(password: &str) -> usize {
+pub fn get_theoretical_char_set_size(password: &str) -> usize {
+    if password.is_empty() {
+        return 0;
+    }
+
     let mut char_sets = HashSet::new();
     for c in password.chars() {
         if c.is_ascii_lowercase() {
@@ -214,15 +221,53 @@ fn get_theoretical_char_set_size(password: &str) -> usize {
             char_sets.insert("other");
         }
     }
-    match char_sets.len() {
-        1 => if char_sets.contains("digit") { 10 } else { 26 },
-        2 => if char_sets.contains("lowercase") && char_sets.contains("uppercase") { 52 }
-             else if char_sets.contains("digit") { 36 } 
-             else { 52 },
-        3 => 62, // lowercase + uppercase + digits (most common)
-        4 => 94, // ASCII printable
-        _ => 128, // Extended
+
+    const LOWERCASE_SIZE: usize = 26;
+    const UPPERCASE_SIZE: usize = 26;
+    const DIGIT_SIZE: usize = 10;
+    const PUNCTUATION_CHAR_SET: &str = "!\"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~";
+    const PUNCTUATION_SIZE: usize = 32; //PUNCTUATION_CHAR_SET.chars().count();
+
+    let mut total_size = 0;
+    let mut has_known_ascii_type = false;
+
+    if char_sets.contains("lowercase") {
+        total_size += LOWERCASE_SIZE;
+        has_known_ascii_type = true;
     }
+    if char_sets.contains("uppercase") {
+        total_size += UPPERCASE_SIZE;
+        has_known_ascii_type = true;
+    }
+    if char_sets.contains("digit") {
+        total_size += DIGIT_SIZE;
+        has_known_ascii_type = true;
+    }
+    if char_sets.contains("punctuation") {
+        total_size += PUNCTUATION_SIZE;
+        has_known_ascii_type = true;
+    }
+
+    if char_sets.contains("other") {
+        let unique_other_chars_count = password.chars().filter(|c| {
+            !c.is_ascii_lowercase() &&
+            !c.is_ascii_uppercase() &&
+            !c.is_ascii_digit() &&
+            !PUNCTUATION_CHAR_SET.contains(*c)
+        }).collect::<HashSet<char>>().len();
+
+        if !has_known_ascii_type {
+            total_size = unique_other_chars_count;
+        } else {
+            total_size += unique_other_chars_count;
+        }
+    }
+
+    if total_size == 0 && !password.is_empty() {
+        return password.chars().collect::<HashSet<char>>().len().max(1);
+    }
+
+    total_size.max(1)
 }
 
 /// Detects sequential characters in the password
