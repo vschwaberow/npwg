@@ -27,7 +27,7 @@ pub const DEFINE: &[(&str, &str)] = &[
     ("slashes", "/\\"),
     ("brackets", "[]{}()"),
     ("punctuation", "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"),
-    ("all", "#%&?@!#$%&*+-./:=?@~0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~!\"$&`'71lI|2Z6G:;^`'!|<({[]})>~-/\\[]{}()!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"),
+    ("all", "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"),
     ("allprint", "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"),
     ("allprintnoquote", "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!#$%&()*+,-./:;<=>?@[\\]^_`{|}~"),
     ("allprintnospace", "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"),
