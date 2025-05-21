@@ -181,3 +181,115 @@ mod tests {
         assert_eq!(stats.kurtosis, 0.0, "Kurtosis should be 0.0 for an empty list");
     }
 }
+
+#[cfg(test)]
+mod strength_tests {
+    use crate::strength::{calculate_entropy, get_theoretical_char_set_size};
+
+    #[test]
+    fn test_gcss_empty() {
+        assert_eq!(get_theoretical_char_set_size(""), 0);
+    }
+
+    #[test]
+    fn test_gcss_lowercase_only() {
+        assert_eq!(get_theoretical_char_set_size("abc"), 26);
+        assert_eq!(get_theoretical_char_set_size("aaaaa"), 26);
+    }
+
+    #[test]
+    fn test_gcss_uppercase_only() {
+        assert_eq!(get_theoretical_char_set_size("ABC"), 26);
+    }
+
+    #[test]
+    fn test_gcss_digits_only() {
+        assert_eq!(get_theoretical_char_set_size("123"), 10);
+    }
+
+    #[test]
+    fn test_gcss_punctuation_only() {
+        assert_eq!(get_theoretical_char_set_size("!@#"), 32); 
+        assert_eq!(get_theoretical_char_set_size("!!!"), 32);
+    }
+
+    #[test]
+    fn test_gcss_lowercase_uppercase() {
+        assert_eq!(get_theoretical_char_set_size("aB"), 26 + 26);
+    }
+
+    #[test]
+    fn test_gcss_lower_digits() {
+        assert_eq!(get_theoretical_char_set_size("a1"), 26 + 10);
+    }
+
+    #[test]
+    fn test_gcss_lower_punct() {
+        assert_eq!(get_theoretical_char_set_size("a!"), 26 + 32);
+    }
+
+    #[test]
+    fn test_gcss_all_standard_types() {
+        assert_eq!(get_theoretical_char_set_size("aA1!"), 26 + 26 + 10 + 32);
+    }
+
+    #[test]
+    fn test_gcss_only_other_unique() {
+        assert_eq!(get_theoretical_char_set_size("€αβ"), 3);
+    }
+
+    #[test]
+    fn test_gcss_only_other_repeated() {
+        assert_eq!(get_theoretical_char_set_size("€€€"), 1);
+    }
+    
+    #[test]
+    fn test_gcss_known_and_other_unique() {
+        assert_eq!(get_theoretical_char_set_size("abcαβ"), 26 + 2); 
+    }
+
+    #[test]
+    fn test_gcss_known_and_other_mixed() {
+        assert_eq!(get_theoretical_char_set_size("aA1!€"), 26 + 26 + 10 + 32 + 1);
+    }
+    
+    #[test]
+    fn test_gcss_space_only() { 
+        assert_eq!(get_theoretical_char_set_size(" "), 1);
+        assert_eq!(get_theoretical_char_set_size("   "), 1);
+    }
+
+    #[test]
+    fn test_gcss_space_and_letter() { 
+        assert_eq!(get_theoretical_char_set_size("a b"), 26 + 1);
+    }
+
+    #[test]
+    fn test_calc_entropy_empty() {
+        assert_eq!(calculate_entropy(""), 0.0);
+    }
+
+    #[test]
+    fn test_calc_entropy_single_char_type_all_same() {
+        let score = calculate_entropy("aaaaa");
+        assert!((score - 0.18).abs() < 0.001, "Expected approx 0.18, got {}", score);
+    }
+
+    #[test]
+    fn test_calc_entropy_single_char_type_all_diff() {
+        let score = calculate_entropy("abc");
+        assert!((score - 0.378).abs() < 0.001, "Expected approx 0.378, got {}", score);
+    }
+
+    #[test]
+    fn test_calc_entropy_two_char_types_perfect_mix() {
+        let score = calculate_entropy("a1b2");
+        assert!((score - 0.4337).abs() < 0.001, "Expected approx 0.4337, got {}", score);
+    }
+
+    #[test]
+    fn test_calc_entropy_only_other_unique() {
+        let score = calculate_entropy("€α");
+         assert!((score - 0.8125).abs() < 0.001, "Expected approx 0.8125, got {}", score);
+    }
+}
