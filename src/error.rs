@@ -15,7 +15,7 @@ pub enum PasswordGeneratorError {
     Io(#[from] std::io::Error),
     #[error("Network error: {0}")]
     Network(#[from] reqwest::Error),
-    #[error("Worldlist downloaded, restart the program to use it.")]
+    #[error("Wordlist downloaded, restart the program to use it.")]
     WordlistDownloaded,
     #[error("Dialoguer error: {0}")]
     DialoguerError(DialoguerError),
