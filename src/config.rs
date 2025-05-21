@@ -72,7 +72,7 @@ impl Default for PasswordGeneratorConfig {
 impl PasswordGeneratorConfig {
     pub fn new() -> Self {
         let mut config = Self {
-            length: 8,
+            length: 16,
             allowed_chars: Vec::new(),
             excluded_chars: HashSet::new(),
             included_chars: HashSet::new(),
