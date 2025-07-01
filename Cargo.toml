@@ -34,7 +34,7 @@ serde = { version = "1.0.219", features = ["derive"] }
 thiserror = "2.0.12"
 dialoguer = "0.11.0"
 console = "0.15.11"
-arboard = { version = "3.5.0", features = ["wl-clipboard-rs"] }
+arboard = { version = "3.6.0", features = ["wl-clipboard-rs"] }
 
 [profile.release]
 opt-level = 3
