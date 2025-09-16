@@ -32,7 +32,7 @@ futures = "0.3.31"
 colored = "3.0.0"
 serde = { version = "1.0.224", features = ["derive"] }
 thiserror = "2.0.12"
-dialoguer = "0.11.0"
+dialoguer = "0.12.0"
 console = "0.16.1"
 arboard = { version = "3.6.0", features = ["wl-clipboard-rs"] }
 
