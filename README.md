@@ -80,102 +80,109 @@ npwg [OPTIONS]
 - `slashes`, `brackets`, `punctuation`: Specific character types
 - `all`, `allprint`, `allprintnoquote`, etc.: Various combinations of character types
 
-### Examples
+### Example Recipes
 
-Use the interactive mode
-```sh
-npwg -i
-```
-or
-```sh
-npwg --interactive
-```
+#### Quick Passwords
 
-Generate a password with the default length (16 characters):
+Generate default credentials:
+
 ```sh
 npwg
 ```
 
-Generate a password with a specific length:
-```sh
-npwg -l 12
-```
-
-Generate multiple passwords:
-```sh
-npwg -c 5
-```
-
-Generate a password using only uppercase and lowercase letters:
-```sh
-npwg -a upperletter,lowerletter
-```
-
-Generate a diceware passphrase:
-```sh
-npwg --use-words -l 6
-```
-
-Generate a diceware passphrase with a custom separator:
-```sh
-npwg --use-words --separator "-" -l 6
-```
-
-Generate a diceware passphrase with random separators:
-```sh
-npwg --use-words --separator random -l 6
-```
-
-Generate a pronounceable password:
-```sh
-npwg --pronounceable
-```
-
-Generate a password and display statistics:
-```sh
-npwg --stats
-```
-
-Generate a password and display the estimated strength:
-```sh 
-npwg --strength
-```
-
-Generate a password using the Diceware method. If no diceware wordlist is in ~/.npwg, it will be automatically downloaded from the EFF website:
+Specify length, count, and character sets:
 
 ```sh
-npwg -d
+npwg --length 20 --count 3 --allowed upperletter,lowerletter,digit
 ```
 
-Generate a password using the Diceware method with a custom number of words. The default number of words is 6. The wordlist will be downloaded if it is not found in ~/.npwg:
+Inspect entropy and statistics in one pass:
 
 ```sh
-npwg -d -w 8
+npwg --strength --stats
 ```
 
-Generate a diceware passphrase with a custom separator:
-```sh
-npwg --use-words --separator "-" -l 6
-```
+Copy freshly generated secrets to the clipboard:
 
-Generate a diceware passphrase with random separators:
-```sh
-npwg --use-words --separator random -l 6
-```
-
-Mutate an existing password:
-```sh
-npwg --mutate --mutation-type replace --mutation-strength 3
-```
-
-Generate a password and copy it to the clipboard:
 ```sh
 npwg --copy
+```
+
+#### Diceware Passphrases
+
+First run downloads and verifies the EFF wordlist automatically. Generate six-word phrases separated by spaces:
+
+```sh
+npwg --use-words --length 6
+```
+
+Customise separators or request random punctuation between words:
+
+```sh
+npwg --use-words --separator "-" --length 5
+npwg --use-words --separator random --length 7
+```
+
+#### Pronounceable and Pattern Modes
+
+Create pronounceable strings that alternate consonants and vowels:
+
+```sh
+npwg --pronounceable --length 10
+```
+
+Enforce structural patterns (L=letter, D=digit, S=symbol):
+
+```sh
+npwg --pattern LLDDS --length 16
+```
+
+#### Mutation Workflow
+
+Tweak existing passwords by applying deterministic mutations and optional lengthening:
+
+```sh
+npwg --mutate --mutation-type swap --mutation-strength 2 --lengthen 3
+```
+
+Use interactive mode for guided generation and mutation prompts:
+
+```sh
+npwg --interactive
+```
+
+### Configuration Profiles
+
+Create a `config.toml` in `~/.config/npwg/` (or `~/.npwg/` on systems without XDG directories) to store defaults and reusable profiles:
+
+```toml
+[defaults]
+length = 20
+allowed = "upperletter,lowerletter,digit"
+
+[profiles.work]
+count = 5
+use_words = true
+separator = "-"
+```
+
+Invoke a profile at runtime:
+
+```sh
+npwg --profile work
+```
+
+Provide a custom config path when needed:
+
+```sh
+npwg --config ./fixtures/npwg.toml --profile personal
 ```
 
 ## Contributing
 
 Contributions are welcome! If you find a bug or have a suggestion for improvement, please open an issue or submit a pull request.
+
+When contributing Rust code, include only the SPDX license header at the top of each `*.rs` file—avoid additional inline or block comments elsewhere.
 
 ## License
 

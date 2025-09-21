@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 ### Added
 - Regression tests covering pronounceable output, mutation workflows, clipboard failures, and CLI argument parsing.
 - Explicit error variants for wordlist validation failures and clipboard availability.
+- Optional configuration file with reusable profiles (`--config`, `--profile`).
 
 ### Changed
 - GitHub Actions release workflow now publishes `npwg` binaries directly.
