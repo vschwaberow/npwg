@@ -3,7 +3,7 @@
 // File: src/profile.rs
 // Author: Volker Schwaberow <volker@schwaberow.de>
 
-use crate::config::{PasswordGeneratorConfig, PasswordGeneratorMode, Separator, DEFINE};
+use crate::config::{PasswordGeneratorConfig, Separator, DEFINE};
 use crate::error::{PasswordGeneratorError, Result};
 use dirs::{config_dir, home_dir};
 use serde::Deserialize;
@@ -154,6 +154,7 @@ pub fn parse_separator(value: &str) -> Result<Separator> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::PasswordGeneratorMode;
 
     #[test]
     fn apply_profile_overrides_defaults() {
