@@ -8,9 +8,9 @@ mod config;
 mod diceware;
 mod error;
 mod generator;
+mod interactive;
 mod stats;
 mod strength;
-mod interactive;
 
 const DAEMONIZE_ARG: &str = "__internal_daemonize";
 
@@ -30,7 +30,10 @@ use generator::{
     mutate_password, MutationType,
 };
 use stats::show_stats;
-use strength::{evaluate_password_strength, get_improvement_suggestions, get_strength_bar, get_strength_feedback};
+use strength::{
+    evaluate_password_strength, get_improvement_suggestions, get_strength_bar,
+    get_strength_feedback,
+};
 use zeroize::Zeroize;
 
 impl From<arboard::Error> for PasswordGeneratorError {
@@ -49,7 +52,34 @@ async fn main() -> Result<()> {
             return copy_to_clipboard("").map(|_| ());
         }
     }
-    let matches = Command::new("npwg")
+    let matches = build_cli().get_matches();
+
+    if matches.get_flag("interactive") {
+        return interactive::interactive_mode().await;
+    }
+
+    let config = build_config(&matches)?;
+
+    let copy = matches.get_flag("copy");
+
+    if matches.get_flag("mutate") {
+        handle_mutation(&config, &matches, copy).await
+    } else {
+        match config.mode {
+            PasswordGeneratorMode::Diceware => handle_diceware(&config, &matches, copy).await,
+            PasswordGeneratorMode::Password => {
+                if config.pronounceable {
+                    handle_pronounceable(&config, &matches, copy).await
+                } else {
+                    handle_password(&config, &matches, copy).await
+                }
+            }
+        }
+    }
+}
+
+fn build_cli() -> Command {
+    Command::new("npwg")
         .version(clap::crate_version!())
         .author("Volker Schwaberow <volker@schwaberow.de>")
         .about("Generates secure passwords")
@@ -169,7 +199,19 @@ async fn main() -> Result<()> {
         )
         .group(
             ArgGroup::new("generation")
-                .args(["pattern", "avoid-repeating", "allowed", "use-words", "separator", "pronounceable", "mutate", "mutation_type", "mutation_strength", "lengthen"])
+                .args([
+                    "pattern",
+                    "avoid-repeating",
+                    "allowed",
+                    "use-words",
+                    "separator",
+                    "pronounceable",
+                    "mutate",
+                    "mutation_type",
+                    "mutation_strength",
+                    "lengthen",
+                ])
+                .multiple(true)
                 .required(false),
         )
         .arg(
@@ -180,30 +222,6 @@ async fn main() -> Result<()> {
                 .help("Sets the seed for the random number generator")
                 .value_parser(value_parser!(u64)),
         )
-        .get_matches();
-
-    if matches.get_flag("interactive") {
-        return interactive::interactive_mode().await;
-    }
-
-    let config = build_config(&matches)?;
-
-    let copy = matches.get_flag("copy");
-
-    if matches.get_flag("mutate") {
-        handle_mutation(&config, &matches, copy).await
-    } else {
-        match config.mode {
-            PasswordGeneratorMode::Diceware => handle_diceware(&config, &matches, copy).await,
-            PasswordGeneratorMode::Password => {
-                if config.pronounceable {
-                    handle_pronounceable(&config, &matches, copy).await
-                } else {
-                    handle_password(&config, &matches, copy).await
-                }
-            }
-        }
-    }
 }
 
 fn build_config(matches: &clap::ArgMatches) -> Result<PasswordGeneratorConfig> {
@@ -376,7 +394,11 @@ async fn handle_mutation(
         let mutation_type_display = cli_mutation_type_arg
             .map(|t| t.to_string())
             .unwrap_or_else(|| "random".to_string());
-        println!("Mutated:  {} (using {})", mutated.green(), mutation_type_display);
+        println!(
+            "Mutated:  {} (using {})",
+            mutated.green(),
+            mutation_type_display
+        );
         println!();
     }
 
@@ -397,9 +419,10 @@ async fn handle_mutation(
 }
 
 fn copy_to_clipboard(text: &str) -> Result<()> {
+    ensure_clipboard_text(text)?;
     #[cfg(target_os = "linux")]
     {
-        use std::{env, process};
+        use std::env;
 
         if env::args().any(|arg| arg == DAEMONIZE_ARG) {
             let text = env::var("CLIPBOARD_TEXT").map_err(|_| {
@@ -407,45 +430,89 @@ fn copy_to_clipboard(text: &str) -> Result<()> {
                     "Failed to read CLIPBOARD_TEXT environment variable".to_string(),
                 )
             })?;
-            Clipboard::new()?.set().wait().text(text).map_err(|e| {
-                PasswordGeneratorError::ClipboardError(format!(
-                    "Failed to copy to clipboard: {}",
-                    e
-                ))
-            })?;
+            write_to_clipboard(&text)?;
             loop {
                 std::thread::sleep(std::time::Duration::from_secs(1));
             }
         } else {
-            process::Command::new(env::current_exe()?)
-                .arg(DAEMONIZE_ARG)
-                .stdin(process::Stdio::null())
-                .stdout(process::Stdio::null())
-                .stderr(process::Stdio::null())
-                .env("CLIPBOARD_TEXT", text)
-                .current_dir("/")
-                .spawn()
-                .map_err(|e| {
-                    PasswordGeneratorError::ClipboardError(format!(
-                        "Failed to spawn daemon process: {}",
-                        e
-                    ))
-                })?;
+            spawn_clipboard_daemon(text)?;
         }
     }
 
     #[cfg(not(target_os = "linux"))]
     {
-        let mut clipboard = Clipboard::new().map_err(|e| {
-            PasswordGeneratorError::ClipboardError(format!("Failed to access clipboard: {}", e))
-        })?;
-
-        clipboard.set_text(text.to_owned()).map_err(|e| {
-            PasswordGeneratorError::ClipboardError(format!("Failed to copy to clipboard: {}", e))
-        })?;
+        write_to_clipboard(text)?;
     }
 
     Ok(())
+}
+
+fn ensure_clipboard_text(text: &str) -> Result<()> {
+    if text.trim().is_empty() {
+        return Err(PasswordGeneratorError::ClipboardError(
+            "Clipboard text is empty; nothing to copy.".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn spawn_clipboard_daemon(text: &str) -> Result<()> {
+    use std::{env, process};
+
+    process::Command::new(env::current_exe()?)
+        .arg(DAEMONIZE_ARG)
+        .stdin(process::Stdio::null())
+        .stdout(process::Stdio::null())
+        .stderr(process::Stdio::null())
+        .env("CLIPBOARD_TEXT", text)
+        .current_dir("/")
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| {
+            PasswordGeneratorError::ClipboardUnavailable(format!(
+                "Failed to spawn clipboard helper: {}",
+                e
+            ))
+        })
+}
+
+#[cfg(target_os = "linux")]
+fn write_to_clipboard(text: &str) -> Result<()> {
+    let mut clipboard = Clipboard::new().map_err(|e| {
+        PasswordGeneratorError::ClipboardUnavailable(format!(
+            "Unable to access clipboard backend (install wl-clipboard?): {}",
+            e
+        ))
+    })?;
+
+    clipboard.set().wait().text(text.to_string()).map_err(|e| {
+        PasswordGeneratorError::ClipboardError(format!("Failed to write text to clipboard: {}", e))
+    })?;
+
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn write_to_clipboard(text: &str) -> Result<()> {
+    let mut clipboard = Clipboard::new().map_err(|e| {
+        PasswordGeneratorError::ClipboardUnavailable(format!("Unable to access clipboard: {}", e))
+    })?;
+
+    clipboard.set_text(text.to_owned()).map_err(|e| {
+        PasswordGeneratorError::ClipboardError(format!("Failed to write text to clipboard: {}", e))
+    })?;
+
+    Ok(())
+}
+
+#[cfg(test)]
+fn copy_to_clipboard_with<F>(text: &str, mut setter: F) -> Result<()>
+where
+    F: FnMut(&str) -> Result<()>,
+{
+    ensure_clipboard_text(text)?;
+    setter(text)
 }
 
 fn print_strength_meter(data: &[String]) {
@@ -469,7 +536,7 @@ fn print_strength_meter(data: &[String]) {
             }),
             password.yellow()
         );
-        
+
         if strength < 0.6 {
             let suggestions = get_improvement_suggestions(password);
             if !suggestions.is_empty() {
@@ -489,4 +556,67 @@ fn print_stats(data: &[String]) {
     println!("Variance: {:.6}", pq.variance.to_string().yellow());
     println!("Skewness: {:.6}", pq.skewness.to_string().yellow());
     println!("Kurtosis: {:.6}", pq.kurtosis.to_string().yellow());
+}
+
+#[cfg(test)]
+mod cli_tests {
+    use super::*;
+
+    #[test]
+    fn test_cli_parses_pattern_and_seed() {
+        let matches = build_cli()
+            .try_get_matches_from([
+                "npwg",
+                "--pattern",
+                "LLDDS",
+                "--allowed",
+                "lowerletter",
+                "--length",
+                "10",
+                "--seed",
+                "99",
+            ])
+            .unwrap();
+        let config = build_config(&matches).unwrap();
+        assert_eq!(config.pattern.as_deref(), Some("LLDDS"));
+        assert_eq!(config.length, 10);
+        assert_eq!(config.seed, Some(99));
+    }
+
+    #[test]
+    fn test_cli_pronounceable_flag_sets_mode() {
+        let matches = build_cli()
+            .try_get_matches_from(["npwg", "--pronounceable", "--allowed", "lowerletter"])
+            .unwrap();
+        let config = build_config(&matches).unwrap();
+        assert!(config.pronounceable);
+        assert!(matches.get_flag("pronounceable"));
+    }
+
+    #[test]
+    fn test_copy_to_clipboard_with_failure_path() {
+        let error = copy_to_clipboard_with("secret", |_| {
+            Err(PasswordGeneratorError::ClipboardUnavailable(
+                "backend missing".to_string(),
+            ))
+        })
+        .unwrap_err();
+        match error {
+            PasswordGeneratorError::ClipboardUnavailable(message) => {
+                assert!(message.contains("backend"));
+            }
+            other => panic!("Unexpected error variant: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_copy_to_clipboard_rejects_empty_text() {
+        let error = copy_to_clipboard_with("   ", |_| Ok(())).unwrap_err();
+        match error {
+            PasswordGeneratorError::ClipboardError(message) => {
+                assert!(message.contains("empty"));
+            }
+            other => panic!("Unexpected error variant: {:?}", other),
+        }
+    }
 }
