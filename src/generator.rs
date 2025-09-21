@@ -8,10 +8,10 @@ use crate::config::PasswordGeneratorConfig;
 use crate::config::Separator;
 use crate::error::{PasswordGeneratorError, Result};
 use clap::ValueEnum;
+use rand::rngs::StdRng;
 use rand::seq::IndexedRandom;
 use rand::seq::IteratorRandom;
 use rand::{Rng, SeedableRng};
-use rand::rngs::StdRng;
 
 const DEFAULT_SEPARATORS: &[char] = &[
     'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's',
@@ -55,7 +55,7 @@ impl std::str::FromStr for MutationType {
 }
 
 pub async fn generate_password(config: &PasswordGeneratorConfig) -> Result<String> {
-    let mut rng =  match config.seed {
+    let mut rng = match config.seed {
         Some(seed) => StdRng::seed_from_u64(seed),
         None => StdRng::from_rng(&mut rand::rng()),
     };
@@ -67,7 +67,7 @@ pub async fn generate_password(config: &PasswordGeneratorConfig) -> Result<Strin
 
     if available_chars.is_empty() {
         return Err(PasswordGeneratorError::InvalidConfig(
-            "No characters available for generation with the current settings.".to_string()
+            "No characters available for generation with the current settings.".to_string(),
         ));
     }
 
@@ -84,14 +84,18 @@ pub async fn generate_password(config: &PasswordGeneratorConfig) -> Result<Strin
     Ok(password)
 }
 
-pub fn generate_with_pattern(pattern: &str, available_chars: &[char], length: usize, seed: Option<u64>) -> Result<String> {
-
+pub fn generate_with_pattern(
+    pattern: &str,
+    available_chars: &[char],
+    length: usize,
+    seed: Option<u64>,
+) -> Result<String> {
     if available_chars.is_empty() {
         return Err(PasswordGeneratorError::InvalidConfig(
-            "No characters available for generation with the current settings.".to_string()
+            "No characters available for generation with the current settings.".to_string(),
         ));
     }
-    
+
     let mut rng = match seed {
         Some(seed) => StdRng::seed_from_u64(seed),
         None => StdRng::from_rng(&mut rand::rng()),
@@ -100,9 +104,18 @@ pub fn generate_with_pattern(pattern: &str, available_chars: &[char], length: us
 
     for symbol in pattern.chars() {
         let char_opt = match symbol {
-            'L' | 'l' => available_chars.iter().filter(|c| c.is_ascii_alphabetic()).choose(&mut rng),
-            'D' | 'd' => available_chars.iter().filter(|c| c.is_ascii_digit()).choose(&mut rng),
-            'S' | 's' => available_chars.iter().filter(|c| !c.is_ascii_alphanumeric()).choose(&mut rng),
+            'L' | 'l' => available_chars
+                .iter()
+                .filter(|c| c.is_ascii_alphabetic())
+                .choose(&mut rng),
+            'D' | 'd' => available_chars
+                .iter()
+                .filter(|c| c.is_ascii_digit())
+                .choose(&mut rng),
+            'S' | 's' => available_chars
+                .iter()
+                .filter(|c| !c.is_ascii_alphanumeric())
+                .choose(&mut rng),
             _ => None,
         };
 
@@ -132,10 +145,9 @@ pub async fn generate_diceware_passphrase(
     wordlist: &[String],
     config: &PasswordGeneratorConfig,
 ) -> Result<Vec<String>> {
-
     if wordlist.is_empty() {
         return Err(PasswordGeneratorError::InvalidConfig(
-            "Cannot generate diceware passphrase: wordlist is empty.".to_string()
+            "Cannot generate diceware passphrase: wordlist is empty.".to_string(),
         ));
     }
 
@@ -182,10 +194,10 @@ pub async fn generate_pronounceable_password(config: &PasswordGeneratorConfig) -
 
     let consonants = "bcdfghjklmnpqrstvwxyz";
     let vowels = "aeiou";
-    
+
     if consonants.is_empty() || vowels.is_empty() {
         return Err(PasswordGeneratorError::InvalidConfig(
-            "Cannot generate pronounceable password: character sets are empty.".to_string()
+            "Cannot generate pronounceable password: character sets are empty.".to_string(),
         ));
     }
 
@@ -212,7 +224,9 @@ pub async fn generate_pronounceable_password(config: &PasswordGeneratorConfig) -
     Ok(password)
 }
 
-pub async fn generate_pronounceable_passwords(config: &PasswordGeneratorConfig) -> Result<Vec<String>> {
+pub async fn generate_pronounceable_passwords(
+    config: &PasswordGeneratorConfig,
+) -> Result<Vec<String>> {
     let mut passwords = Vec::with_capacity(config.num_passwords);
     for _ in 0..config.num_passwords {
         passwords.push(generate_pronounceable_password(config).await?);
@@ -245,18 +259,20 @@ pub fn mutate_password(
 
         let current_mutation_type = match forced_mutation_type {
             Some(t) => t.clone(),
-            None => { 
-                match rng.random_range(0..5) {
-                    0 => MutationType::Replace,
-                    1 => MutationType::Insert,
-                    2 => MutationType::Remove,
-                    3 => MutationType::Swap,
-                    4 => MutationType::Shift,
-                    _ => unreachable!(),
-                }
-            }
+            None => match rng.random_range(0..5) {
+                0 => MutationType::Replace,
+                1 => MutationType::Insert,
+                2 => MutationType::Remove,
+                3 => MutationType::Swap,
+                4 => MutationType::Shift,
+                _ => unreachable!(),
+            },
         };
-        let index = if mutated.is_empty() { 0 } else { rng.random_range(0..mutated.len()) };
+        let index = if mutated.is_empty() {
+            0
+        } else {
+            rng.random_range(0..mutated.len())
+        };
 
         match current_mutation_type {
             MutationType::Replace => {
@@ -268,12 +284,16 @@ pub fn mutate_password(
                         .filter(|&&c| c != char_to_replace)
                         .choose(&mut rng)
                         .copied()
-                        .unwrap_or(char_to_replace); 
+                        .unwrap_or(char_to_replace);
                     mutated.replace_range(index..index + 1, &new_char.to_string());
                 }
             }
             MutationType::Insert => {
-                let new_char = config.allowed_chars.choose(&mut rng).copied().unwrap_or('a');
+                let new_char = config
+                    .allowed_chars
+                    .choose(&mut rng)
+                    .copied()
+                    .unwrap_or('a');
                 mutated.insert(index, new_char);
             }
             MutationType::Remove => {
@@ -283,7 +303,8 @@ pub fn mutate_password(
             }
             MutationType::Swap => {
                 if mutated.len() > 1 {
-                    let index2 = (index + 1 + rng.random_range(0..mutated.len() - 1)) % mutated.len();
+                    let index2 =
+                        (index + 1 + rng.random_range(0..mutated.len() - 1)) % mutated.len();
                     if index != index2 {
                         let char1 = mutated.chars().nth(index).unwrap();
                         let char2 = mutated.chars().nth(index2).unwrap();
@@ -323,16 +344,30 @@ mod tests {
         let pattern = "LDLS";
         let length = 10;
         let seed = None;
-        
+
         let result = generate_with_pattern(pattern, &available_chars, length, seed);
-        assert!(result.is_ok(), "Expected successful generation despite unfulfillable pattern");
-        
+        assert!(
+            result.is_ok(),
+            "Expected successful generation despite unfulfillable pattern"
+        );
+
         let password = result.unwrap();
-        assert_eq!(password.len(), length, "Password should match the requested length");
-        
+        assert_eq!(
+            password.len(),
+            length,
+            "Password should match the requested length"
+        );
+
         for c in password.chars() {
-            assert!(available_chars.contains(&c), "Password contains character not in available_chars: {}", c);
-        }        
-        assert!(!password.chars().any(|c| c.is_ascii_digit()), "Password should not contain digits");
+            assert!(
+                available_chars.contains(&c),
+                "Password contains character not in available_chars: {}",
+                c
+            );
+        }
+        assert!(
+            !password.chars().any(|c| c.is_ascii_digit()),
+            "Password should not contain digits"
+        );
     }
 }

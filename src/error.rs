@@ -17,10 +17,16 @@ pub enum PasswordGeneratorError {
     Network(#[from] reqwest::Error),
     #[error("Wordlist downloaded, restart the program to use it.")]
     WordlistDownloaded,
+    #[error("Wordlist validation failed: {0}")]
+    WordlistValidation(String),
+    #[error("Configuration error: {0}")]
+    ConfigFile(String),
     #[error("Dialoguer error: {0}")]
     DialoguerError(DialoguerError),
     #[error("{0}")]
     ClipboardError(String),
+    #[error("Clipboard unavailable: {0}")]
+    ClipboardUnavailable(String),
 }
 
 impl From<DialoguerError> for PasswordGeneratorError {
