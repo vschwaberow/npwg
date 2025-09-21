@@ -9,6 +9,7 @@ mod diceware;
 mod error;
 mod generator;
 mod interactive;
+mod profile;
 mod stats;
 mod strength;
 
@@ -16,11 +17,10 @@ const DAEMONIZE_ARG: &str = "__internal_daemonize";
 
 use std::process;
 
-use crate::config::DEFINE;
 use arboard::Clipboard;
 #[cfg(target_os = "linux")]
 use arboard::SetExtLinux;
-use clap::{value_parser, Arg, ArgAction, ArgGroup, Command};
+use clap::{parser::ValueSource, value_parser, Arg, ArgAction, ArgGroup, Command};
 use colored::*;
 use config::{PasswordGeneratorConfig, PasswordGeneratorMode, Separator};
 use dialoguer::Input;
@@ -29,6 +29,7 @@ use generator::{
     generate_diceware_passphrase, generate_passwords, generate_pronounceable_passwords,
     mutate_password, MutationType,
 };
+use profile::{apply_allowed_sets, apply_profile, load_user_profiles, parse_separator};
 use stats::show_stats;
 use strength::{
     evaluate_password_strength, get_improvement_suggestions, get_strength_bar,
@@ -146,6 +147,18 @@ fn build_cli() -> Command {
                 .action(ArgAction::SetTrue),
         )
         .arg(
+            Arg::new("config")
+                .long("config")
+                .value_name("PATH")
+                .help("Path to a configuration file with defaults and profiles"),
+        )
+        .arg(
+            Arg::new("profile")
+                .long("profile")
+                .value_name("NAME")
+                .help("Name of a profile from the configuration file"),
+        )
+        .arg(
             Arg::new("separator")
                 .long("separator")
                 .value_name("SEPARATOR")
@@ -226,53 +239,64 @@ fn build_cli() -> Command {
 
 fn build_config(matches: &clap::ArgMatches) -> Result<PasswordGeneratorConfig> {
     let mut config = PasswordGeneratorConfig::new();
-    config.length = *matches.get_one::<u8>("length").unwrap() as usize;
-    config.num_passwords = *matches.get_one::<u32>("count").unwrap() as usize;
-    config.set_avoid_repeating(matches.get_flag("avoid-repeating"));
-    config.seed = matches.get_one::<u64>("seed").copied();
-    config.clear_allowed_chars();
-
-    let allowed = matches.get_one::<String>("allowed").unwrap();
-    for charset in allowed.split(',').map(str::trim) {
-        if !DEFINE.iter().any(|&(key, _)| key == charset) {
-            eprintln!(
-                "Error: Unknown characterset '{}' was ignored. Use one of: {}",
-                charset.red(),
-                DEFINE
-                    .iter()
-                    .map(|&(key, _)| key)
-                    .collect::<Vec<_>>()
-                    .join(", ")
-                    .green()
-            );
-            process::exit(1);
-        }
-        config.add_allowed_chars(charset);
+    let profiles = load_user_profiles(matches.get_one::<String>("config"))?;
+    if let Some(defaults) = profiles.defaults() {
+        apply_profile(defaults, &mut config)?;
     }
-    config.mode = if matches.get_flag("use-words") {
-        PasswordGeneratorMode::Diceware
-    } else {
-        PasswordGeneratorMode::Password
-    };
+    if let Some(profile_name) = matches.get_one::<String>("profile") {
+        let profile_definition = profiles.get(profile_name).ok_or_else(|| {
+            PasswordGeneratorError::ConfigFile(format!("Unknown profile '{}'", profile_name))
+        })?;
+        apply_profile(profile_definition, &mut config)?;
+    }
 
-    config.pronounceable = matches.get_flag("pronounceable");
+    if matches.value_source("length") == Some(ValueSource::CommandLine) {
+        config.length = *matches.get_one::<u8>("length").unwrap() as usize;
+    }
+    if matches.value_source("count") == Some(ValueSource::CommandLine) {
+        config.num_passwords = *matches.get_one::<u32>("count").unwrap() as usize;
+    }
+    if matches.get_flag("avoid-repeating") {
+        config.set_avoid_repeating(true);
+    }
+    if matches.value_source("seed") == Some(ValueSource::CommandLine) {
+        config.seed = matches.get_one::<u64>("seed").copied();
+    }
 
-    if config.mode == PasswordGeneratorMode::Diceware {
-        config.separator = if let Some(separator) = matches.get_one::<String>("separator") {
-            match separator.as_str() {
-                "random" => Some(Separator::Random(('a'..='z').chain('0'..='9').collect())),
-                s if s.len() == 1 => Some(Separator::Fixed(s.chars().next().unwrap())),
-                _ => {
-                    eprintln!("Error: Separator must be a single character or 'random'");
+    if matches.value_source("allowed") == Some(ValueSource::CommandLine) {
+        let allowed = matches.get_one::<String>("allowed").unwrap();
+        if let Err(error) = apply_allowed_sets(&mut config, allowed) {
+            match error {
+                PasswordGeneratorError::ConfigFile(message) => {
+                    eprintln!("Error: {}", message.red());
                     process::exit(1);
                 }
+                _ => return Err(error),
             }
-        } else {
-            Some(Separator::Fixed(' '))
-        };
+        }
     }
 
-    config.pattern = matches.get_one::<String>("pattern").cloned();
+    if matches.get_flag("use-words") {
+        config.set_use_words(true);
+    }
+
+    if matches.get_flag("pronounceable") {
+        config.pronounceable = true;
+    }
+
+    if matches.value_source("separator") == Some(ValueSource::CommandLine) {
+        if let Some(separator) = matches.get_one::<String>("separator") {
+            config.separator = Some(parse_separator(separator)?);
+        }
+    }
+
+    if matches.value_source("pattern") == Some(ValueSource::CommandLine) {
+        config.pattern = matches.get_one::<String>("pattern").cloned();
+    }
+
+    if config.mode == PasswordGeneratorMode::Diceware && config.separator.is_none() {
+        config.separator = Some(Separator::Fixed(' '));
+    }
 
     config.validate()?;
     Ok(config)
@@ -561,6 +585,9 @@ fn print_stats(data: &[String]) {
 #[cfg(test)]
 mod cli_tests {
     use super::*;
+    use std::io::Write;
+
+    use tempfile::NamedTempFile;
 
     #[test]
     fn test_cli_parses_pattern_and_seed() {
@@ -617,6 +644,32 @@ mod cli_tests {
                 assert!(message.contains("empty"));
             }
             other => panic!("Unexpected error variant: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_cli_profile_merges_config_file() {
+        let mut file = NamedTempFile::new().unwrap();
+        write!(
+            file,
+            "[defaults]\nlength = 20\nallowed = \"lowerletter\"\n\n[profiles.work]\ncount = 4\nuse_words = true\nseparator = \"-\"\n"
+        )
+        .unwrap();
+        let config_path = file.path().to_str().unwrap();
+        let matches = build_cli()
+            .try_get_matches_from(["npwg", "--config", config_path, "--profile", "work"])
+            .unwrap();
+        let config = build_config(&matches).unwrap();
+        assert_eq!(config.length, 20);
+        assert_eq!(config.num_passwords, 4);
+        assert!(matches.get_flag("use-words") == false);
+        assert!(matches.get_flag("pronounceable") == false);
+        assert!(matches.value_source("allowed") == Some(ValueSource::DefaultValue));
+        assert_eq!(config.allowed_chars.len(), 26);
+        assert!(matches!(config.mode, PasswordGeneratorMode::Diceware));
+        match config.separator.as_ref().unwrap() {
+            Separator::Fixed(separator) => assert_eq!(*separator, '-'),
+            _ => panic!(),
         }
     }
 }
