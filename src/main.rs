@@ -259,6 +259,7 @@ fn build_config(matches: &clap::ArgMatches) -> Result<PasswordGeneratorConfig> {
         apply_profile(profile_definition, &mut config)?;
     }
 
+    let mut policy_minimum_length: Option<usize> = None;
     if let Some(policy) = matches.get_one::<PolicyName>("policy").copied() {
         let details = apply_policy(policy, &mut config)?;
         println!(
@@ -268,6 +269,7 @@ fn build_config(matches: &clap::ArgMatches) -> Result<PasswordGeneratorConfig> {
             details.minimum_length,
             details.recommended_entropy_bits
         );
+        policy_minimum_length = Some(details.minimum_length);
     }
 
     if matches.value_source("length") == Some(ValueSource::CommandLine) {
@@ -312,6 +314,20 @@ fn build_config(matches: &clap::ArgMatches) -> Result<PasswordGeneratorConfig> {
 
     if matches.value_source("pattern") == Some(ValueSource::CommandLine) {
         config.pattern = matches.get_one::<String>("pattern").cloned();
+    }
+
+    if let Some(min_length) = policy_minimum_length {
+        if config.length < min_length {
+            println!(
+                "{}",
+                format!(
+                    "Policy requires at least {} characters; clamping requested length to {}.",
+                    min_length, min_length
+                )
+                .yellow()
+            );
+            config.length = min_length;
+        }
     }
 
     if config.mode == PasswordGeneratorMode::Diceware && config.separator.is_none() {
