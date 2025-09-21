@@ -35,6 +35,7 @@ thiserror = "2.0.12"
 dialoguer = "0.12.0"
 console = "0.16.1"
 arboard = { version = "3.6.0", features = ["wl-clipboard-rs"] }
+sha2 = "0.10"
 
 [profile.release]
 opt-level = 3
