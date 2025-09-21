@@ -9,6 +9,8 @@ pub mod diceware;
 pub mod error;
 pub mod generator;
 pub mod interactive;
+pub mod policy;
+pub mod profile;
 pub mod stats;
 pub mod strength;
 #[cfg(test)]

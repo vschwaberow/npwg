@@ -178,6 +178,13 @@ Provide a custom config path when needed:
 npwg --config ./fixtures/npwg.toml --profile personal
 ```
 
+Use built-in policies for common compliance regimes; these enforce minimum length and character-set expectations before applying your overrides:
+
+```sh
+npwg --policy windows-ad
+npwg --policy pci-dss --count 10
+```
+
 ## Contributing
 
 Contributions are welcome! If you find a bug or have a suggestion for improvement, please open an issue or submit a pull request.

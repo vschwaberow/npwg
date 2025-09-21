@@ -9,6 +9,7 @@ mod diceware;
 mod error;
 mod generator;
 mod interactive;
+mod policy;
 mod profile;
 mod stats;
 mod strength;
@@ -29,6 +30,7 @@ use generator::{
     generate_diceware_passphrase, generate_passwords, generate_pronounceable_passwords,
     mutate_password, MutationType,
 };
+use policy::{apply_policy, PolicyName};
 use profile::{apply_allowed_sets, apply_profile, load_user_profiles, parse_separator};
 use stats::show_stats;
 use strength::{
@@ -159,6 +161,13 @@ fn build_cli() -> Command {
                 .help("Name of a profile from the configuration file"),
         )
         .arg(
+            Arg::new("policy")
+                .long("policy")
+                .value_name("POLICY")
+                .help("Apply a built-in password policy (windows-ad, pci-dss, nist-high)")
+                .value_parser(value_parser!(PolicyName)),
+        )
+        .arg(
             Arg::new("separator")
                 .long("separator")
                 .value_name("SEPARATOR")
@@ -248,6 +257,17 @@ fn build_config(matches: &clap::ArgMatches) -> Result<PasswordGeneratorConfig> {
             PasswordGeneratorError::ConfigFile(format!("Unknown profile '{}'", profile_name))
         })?;
         apply_profile(profile_definition, &mut config)?;
+    }
+
+    if let Some(policy) = matches.get_one::<PolicyName>("policy").copied() {
+        let details = apply_policy(policy, &mut config)?;
+        println!(
+            "Applying policy {} ({}). Minimum length: {} characters, recommended entropy ≈ {:.1} bits.",
+            details.label.green(),
+            details.description,
+            details.minimum_length,
+            details.recommended_entropy_bits
+        );
     }
 
     if matches.value_source("length") == Some(ValueSource::CommandLine) {
@@ -671,5 +691,21 @@ mod cli_tests {
             Separator::Fixed(separator) => assert_eq!(*separator, '-'),
             _ => panic!(),
         }
+    }
+
+    #[test]
+    fn test_cli_policy_enforces_minimums() {
+        let matches = build_cli()
+            .try_get_matches_from(["npwg", "--policy", "windows-ad"])
+            .unwrap();
+        let config = build_config(&matches).unwrap();
+        assert!(config.length >= 14);
+        assert!(config.allowed_chars.iter().any(|c| c.is_ascii_uppercase()));
+        assert!(config.allowed_chars.iter().any(|c| c.is_ascii_lowercase()));
+        assert!(config.allowed_chars.iter().any(|c| c.is_ascii_digit()));
+        assert!(config
+            .allowed_chars
+            .iter()
+            .any(|c| !c.is_ascii_alphanumeric()));
     }
 }
