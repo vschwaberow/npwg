@@ -19,6 +19,8 @@ pub enum PasswordGeneratorError {
     WordlistDownloaded,
     #[error("Wordlist validation failed: {0}")]
     WordlistValidation(String),
+    #[error("Configuration error: {0}")]
+    ConfigFile(String),
     #[error("Dialoguer error: {0}")]
     DialoguerError(DialoguerError),
     #[error("{0}")]
