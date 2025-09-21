@@ -135,10 +135,14 @@ impl PasswordGeneratorConfig {
         }
 
         if !self.excluded_chars.is_empty()
-            && self.allowed_chars.iter().all(|c| self.excluded_chars.contains(c))
+            && self
+                .allowed_chars
+                .iter()
+                .all(|c| self.excluded_chars.contains(c))
         {
             return Err(PasswordGeneratorError::InvalidConfig(
-                "All allowed characters are excluded, resulting in an empty character set".to_string(),
+                "All allowed characters are excluded, resulting in an empty character set"
+                    .to_string(),
             ));
         }
 
