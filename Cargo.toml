@@ -16,7 +16,7 @@ name = "npwg"
 path = "src/lib.rs"
 
 [dependencies]
-regex = "1.11.1"
+regex = "1.11.3"
 zeroize = "1.8.1"
 dashmap = "6.1.0"
 rand_distr = "0.5"
