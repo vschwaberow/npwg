@@ -197,7 +197,8 @@ fn build_cli() -> Command {
             Arg::new("mutation_strength")
                 .long("mutation-strength")
                 .help("Strength of mutation")
-                .default_value("1"),
+                .default_value("1")
+                .value_parser(value_parser!(u32)),
         )
         .arg(
             Arg::new("lengthen")
