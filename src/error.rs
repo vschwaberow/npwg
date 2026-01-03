@@ -23,6 +23,8 @@ pub enum PasswordGeneratorError {
     ConfigFile(String),
     #[error("Dialoguer error: {0}")]
     DialoguerError(DialoguerError),
+    #[error("QR code error: {0}")]
+    QrCode(String),
     #[error("{0}")]
     ClipboardError(String),
     #[error("Clipboard unavailable: {0}")]

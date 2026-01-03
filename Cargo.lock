@@ -1156,6 +1156,7 @@ dependencies = [
  "dialoguer",
  "dirs",
  "futures",
+ "qrcodegen",
  "rand",
  "rand_distr",
  "regex",
@@ -1429,6 +1430,12 @@ checksum = "83f9b339b02259ada5c0f4a389b7fb472f933aa17ce176fd2ad98f28bb401fde"
 dependencies = [
  "num-traits",
 ]
+
+[[package]]
+name = "qrcodegen"
+version = "1.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4339fc7a1021c9c1621d87f5e3505f2805c8c105420ba2f2a4df86814590c142"
 
 [[package]]
 name = "quick-error"
