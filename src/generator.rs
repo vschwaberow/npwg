@@ -7,16 +7,24 @@
 use crate::config::PasswordGeneratorConfig;
 use crate::config::Separator;
 use crate::error::{PasswordGeneratorError, Result};
+use argon2::{Algorithm, Argon2, Params, Version};
 use clap::ValueEnum;
 use rand::rngs::StdRng;
 use rand::seq::IndexedRandom;
 use rand::seq::IteratorRandom;
 use rand::{Rng, SeedableRng};
+use std::collections::HashSet;
+use zeroize::Zeroize;
 
 const DEFAULT_SEPARATORS: &[char] = &[
     'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's',
     't', 'u', 'v', 'w', 'x', 'y', 'z', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
 ];
+
+const ARGON2_M_COST_KIB: u32 = 64 * 1024;
+const ARGON2_T_COST: u32 = 3;
+const ARGON2_P_COST: u32 = 1;
+const DETERMINISTIC_BLOCK_LEN: usize = 64;
 
 #[derive(Debug, ValueEnum, Clone)]
 pub enum MutationType {
@@ -61,15 +69,7 @@ pub async fn generate_password(config: &PasswordGeneratorConfig) -> Result<Strin
     };
     let mut password = String::with_capacity(config.length);
 
-    let mut available_chars: Vec<char> = config.allowed_chars.clone();
-    available_chars.extend(config.included_chars.iter());
-    available_chars.retain(|c| !config.excluded_chars.contains(c));
-
-    if available_chars.is_empty() {
-        return Err(PasswordGeneratorError::InvalidConfig(
-            "No characters available for generation with the current settings.".to_string(),
-        ));
-    }
+    let available_chars = effective_allowed_chars(config)?;
 
     if let Some(pattern) = &config.pattern {
         return generate_with_pattern(pattern, &available_chars, config.length, config.seed);
@@ -82,6 +82,40 @@ pub async fn generate_password(config: &PasswordGeneratorConfig) -> Result<Strin
     }
 
     Ok(password)
+}
+
+pub fn generate_deterministic_password(
+    master_password: &str,
+    service: &str,
+    username: Option<&str>,
+    counter: u32,
+    length: usize,
+    allowed_chars: &[char],
+) -> Result<String> {
+    if allowed_chars.is_empty() {
+        return Err(PasswordGeneratorError::InvalidConfig(
+            "No characters available for deterministic generation.".to_string(),
+        ));
+    }
+
+    let mut output = String::with_capacity(length);
+    let mut block_index: u32 = 0;
+
+    while output.len() < length {
+        let salt = build_salt(service, username, counter, block_index);
+        let mut block = derive_argon2_block(
+            master_password.as_bytes(),
+            salt.as_bytes(),
+            DETERMINISTIC_BLOCK_LEN,
+        )?;
+        append_mapped_chars(&block, allowed_chars, length, &mut output);
+        block.zeroize();
+        block_index = block_index
+            .checked_add(1)
+            .ok_or_else(|| PasswordGeneratorError::InvalidConfig("Counter overflow.".to_string()))?;
+    }
+
+    Ok(output)
 }
 
 pub fn generate_with_pattern(
@@ -334,6 +368,67 @@ pub fn mutate_password(
     mutated
 }
 
+pub fn effective_allowed_chars(config: &PasswordGeneratorConfig) -> Result<Vec<char>> {
+    let mut available_chars: Vec<char> = config.allowed_chars.clone();
+    let mut included_chars: Vec<char> = config.included_chars.iter().copied().collect();
+    included_chars.sort_unstable();
+    available_chars.extend(included_chars);
+    available_chars.retain(|c| !config.excluded_chars.contains(c));
+    let mut seen = HashSet::new();
+    available_chars.retain(|c| seen.insert(*c));
+    if available_chars.is_empty() {
+        return Err(PasswordGeneratorError::InvalidConfig(
+            "No characters available for generation with the current settings.".to_string(),
+        ));
+    }
+    Ok(available_chars)
+}
+
+fn build_salt(service: &str, username: Option<&str>, counter: u32, block_index: u32) -> String {
+    match username {
+        Some(username) => format!("npwg:{}:{}:{}:{}", service, username, counter, block_index),
+        None => format!("npwg:{}:{}:{}", service, counter, block_index),
+    }
+}
+
+fn derive_argon2_block(
+    password: &[u8],
+    salt: &[u8],
+    output_len: usize,
+) -> Result<Vec<u8>> {
+    let params = Params::new(ARGON2_M_COST_KIB, ARGON2_T_COST, ARGON2_P_COST, Some(output_len))
+        .map_err(|e| PasswordGeneratorError::KdfError(e.to_string()))?;
+    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+    let mut output = vec![0u8; output_len];
+    argon2
+        .hash_password_into(password, salt, &mut output)
+        .map_err(|e| PasswordGeneratorError::KdfError(e.to_string()))?;
+    Ok(output)
+}
+
+fn append_mapped_chars(
+    bytes: &[u8],
+    alphabet: &[char],
+    target_len: usize,
+    output: &mut String,
+) {
+    let alphabet_len = alphabet.len();
+    if alphabet_len == 0 {
+        return;
+    }
+    let threshold = (u8::MAX as usize + 1) / alphabet_len * alphabet_len;
+
+    for &byte in bytes {
+        if output.len() >= target_len {
+            break;
+        }
+        let value = byte as usize;
+        if value < threshold {
+            output.push(alphabet[value % alphabet_len]);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -369,5 +464,53 @@ mod tests {
             !password.chars().any(|c| c.is_ascii_digit()),
             "Password should not contain digits"
         );
+    }
+
+    #[test]
+    fn test_generate_deterministic_password_is_stable() {
+        let allowed_chars: Vec<char> = "abc123!@#".chars().collect();
+        let first = generate_deterministic_password(
+            "master-password",
+            "example.com",
+            Some("alice"),
+            1,
+            24,
+            &allowed_chars,
+        )
+        .unwrap();
+        let second = generate_deterministic_password(
+            "master-password",
+            "example.com",
+            Some("alice"),
+            1,
+            24,
+            &allowed_chars,
+        )
+        .unwrap();
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn test_generate_deterministic_password_changes_with_service() {
+        let allowed_chars: Vec<char> = "abc123!@#".chars().collect();
+        let first = generate_deterministic_password(
+            "master-password",
+            "example.com",
+            Some("alice"),
+            1,
+            24,
+            &allowed_chars,
+        )
+        .unwrap();
+        let second = generate_deterministic_password(
+            "master-password",
+            "example.net",
+            Some("alice"),
+            1,
+            24,
+            &allowed_chars,
+        )
+        .unwrap();
+        assert_ne!(first, second);
     }
 }

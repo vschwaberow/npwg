@@ -25,11 +25,11 @@ use arboard::SetExtLinux;
 use clap::{parser::ValueSource, value_parser, Arg, ArgAction, ArgGroup, Command};
 use colored::*;
 use config::{PasswordGeneratorConfig, PasswordGeneratorMode, Separator};
-use dialoguer::Input;
+use dialoguer::{Input, Password};
 use error::{PasswordGeneratorError, Result};
 use generator::{
-    generate_diceware_passphrase, generate_passwords, generate_pronounceable_passwords,
-    mutate_password, MutationType,
+    effective_allowed_chars, generate_deterministic_password, generate_diceware_passphrase,
+    generate_passwords, generate_pronounceable_passwords, mutate_password, MutationType,
 };
 use policy::{apply_policy, PolicyName};
 use profile::{apply_allowed_sets, apply_profile, load_user_profiles, parse_separator};
@@ -39,7 +39,7 @@ use strength::{
     evaluate_password_strength, get_improvement_suggestions, get_strength_bar,
     get_strength_feedback,
 };
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 impl From<arboard::Error> for PasswordGeneratorError {
     fn from(error: arboard::Error) -> Self {
@@ -66,6 +66,10 @@ async fn main() -> Result<()> {
     let config = build_config(&matches)?;
 
     let copy = matches.get_flag("copy");
+
+    if matches.get_flag("deterministic") {
+        return handle_deterministic(&config, &matches, copy).await;
+    }
 
     if matches.get_flag("mutate") {
         handle_mutation(&config, &matches, copy).await
@@ -253,6 +257,45 @@ fn build_cli() -> Command {
                 .help("Sets the seed for the random number generator")
                 .value_parser(value_parser!(u64)),
         )
+        .arg(
+            Arg::new("deterministic")
+                .long("deterministic")
+                .help("Generate passwords deterministically from a master password and service")
+                .action(ArgAction::SetTrue)
+                .conflicts_with_all([
+                    "use-words",
+                    "separator",
+                    "pronounceable",
+                    "mutate",
+                    "seed",
+                    "pattern",
+                ]),
+        )
+        .arg(
+            Arg::new("service")
+                .short('S')
+                .long("service")
+                .value_name("SERVICE")
+                .help("Service or context name used as salt for deterministic generation")
+                .requires("deterministic"),
+        )
+        .arg(
+            Arg::new("username")
+                .short('u')
+                .long("username")
+                .value_name("USERNAME")
+                .help("Optional username for deterministic generation")
+                .requires("deterministic"),
+        )
+        .arg(
+            Arg::new("counter")
+                .long("counter")
+                .value_name("COUNTER")
+                .help("Counter for deterministic generation")
+                .default_value("1")
+                .value_parser(value_parser!(u32))
+                .requires("deterministic"),
+        )
 }
 
 fn build_config(matches: &clap::ArgMatches) -> Result<PasswordGeneratorConfig> {
@@ -416,6 +459,81 @@ async fn handle_pronounceable(
     if copy && !passwords.is_empty() {
         copy_to_clipboard(&passwords.join("\n"))?;
         println!("{}", "Passphrase(s) copied to clipboard.".bold().green());
+    }
+
+    if matches.get_flag("strength") {
+        print_strength_meter(&passwords, !matches.get_flag("qr"));
+    }
+
+    if matches.get_flag("stats") {
+        print_stats(&passwords);
+    }
+
+    passwords.into_iter().for_each(|mut p| p.zeroize());
+    Ok(())
+}
+
+async fn handle_deterministic(
+    config: &PasswordGeneratorConfig,
+    matches: &clap::ArgMatches,
+    copy: bool,
+) -> Result<()> {
+    if matches!(config.mode, PasswordGeneratorMode::Diceware) {
+        return Err(PasswordGeneratorError::InvalidConfig(
+            "Deterministic mode does not support diceware.".to_string(),
+        ));
+    }
+    if config.pronounceable {
+        return Err(PasswordGeneratorError::InvalidConfig(
+            "Deterministic mode does not support pronounceable passwords.".to_string(),
+        ));
+    }
+    if config.pattern.is_some() {
+        return Err(PasswordGeneratorError::InvalidConfig(
+            "Deterministic mode does not support patterns.".to_string(),
+        ));
+    }
+
+    let service = matches
+        .get_one::<String>("service")
+        .ok_or_else(|| {
+            PasswordGeneratorError::InvalidConfig(
+                "Missing required --service for deterministic mode.".to_string(),
+            )
+        })?
+        .as_str();
+    let username = matches.get_one::<String>("username").map(|s| s.as_str());
+    let counter = *matches.get_one::<u32>("counter").unwrap_or(&1);
+
+    let master_password = Zeroizing::new(
+        Password::new()
+            .with_prompt("Master password")
+            .allow_empty_password(false)
+            .interact()?,
+    );
+
+    let allowed_chars = effective_allowed_chars(config)?;
+    let mut passwords = Vec::with_capacity(config.num_passwords);
+    for index in 0..config.num_passwords {
+        let current_counter = counter.checked_add(index as u32).ok_or_else(|| {
+            PasswordGeneratorError::InvalidConfig("Counter overflow.".to_string())
+        })?;
+        let password = generate_deterministic_password(
+            master_password.as_str(),
+            service,
+            username,
+            current_counter,
+            config.length,
+            &allowed_chars,
+        )?;
+        passwords.push(password);
+    }
+
+    render_secrets(&passwords, matches.get_flag("qr"))?;
+
+    if copy && !passwords.is_empty() {
+        copy_to_clipboard(&passwords.join("\n"))?;
+        println!("{}", "Password(s) copied to clipboard.".bold().green());
     }
 
     if matches.get_flag("strength") {

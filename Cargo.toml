@@ -4,10 +4,10 @@ path = "src/main.rs"
 
 [package]
 name = "npwg"
-version = "0.4.8"
+version = "0.5.0"
 edition = "2021"
 license = "MIT"
-authors = [ "Volker Schwaberow <volker@schwaberow.de>",]
+authors = ["Volker Schwaberow <volker@schwaberow.de>"]
 description = "Securely generate random passwords"
 repository = "https://github.com/vschwaberow/npwg"
 
@@ -29,37 +29,38 @@ console = "0.16.2"
 sha2 = "0.10"
 toml = "0.9"
 qrcodegen = "1.8.0"
+argon2 = "0.5.3"
 
 [dev-dependencies]
 tempfile = "3.24"
 
 [dependencies.rand]
 version = "0.9.2"
-features = [ "std", "small_rng",]
+features = ["std", "small_rng"]
 
 [dependencies.chacha20]
 version = "0.9.1"
-features = [ "std", "zeroize",]
+features = ["std", "zeroize"]
 
 [dependencies.clap]
 version = "4.5.53"
-features = [ "cargo", "env", "derive",]
+features = ["cargo", "env", "derive"]
 
 [dependencies.tokio]
 version = "1.48.0"
-features = [ "full",]
+features = ["full"]
 
 [dependencies.reqwest]
 version = "0.12.28"
-features = [ "blocking",]
+features = ["blocking"]
 
 [dependencies.serde]
 version = "1.0.224"
-features = [ "derive",]
+features = ["derive"]
 
 [dependencies.arboard]
 version = "3.6.0"
-features = [ "wl-clipboard-rs",]
+features = ["wl-clipboard-rs"]
 
 [profile.release]
 opt-level = 3

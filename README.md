@@ -13,6 +13,7 @@ npwg is a secure password generator written in Rust. With npwg, you can easily g
 - Display statistics about the generated passwords
 - Show the estimated strength of the generated passwords
 - Interactive mode for easy password generation
+- Deterministic mode for password derivation from a master password and service
 
 ## Installation
 
@@ -66,6 +67,11 @@ npwg [OPTIONS]
 - `--mutation-strength <STRENGTH>`: Strength of mutation [default: 1]
 - `--lengthen <INCREASE>`: Increase the length of passwords during mutation
 - `--copy`: Copy the generated password to the clipboard
+- `--qr`: Print the generated passwords as QR codes
+- `--deterministic`: Generate passwords deterministically from a master password and service
+- `-S, --service <SERVICE>`: Service or context name used as salt for deterministic generation
+- `-u, --username <USERNAME>`: Optional username for deterministic generation
+- `--counter <COUNTER>`: Counter for deterministic generation [default: 1]
 - `-h, --help`: Print help
 - `-V, --version`: Print version
 
@@ -108,6 +114,12 @@ Copy freshly generated secrets to the clipboard:
 npwg --copy
 ```
 
+Render passwords as QR codes (one per password):
+
+```sh
+npwg --qr --count 2
+```
+
 #### Diceware Passphrases
 
 First run downloads and verifies the EFF wordlist automatically. Generate six-word phrases separated by spaces:
@@ -143,6 +155,20 @@ Tweak existing passwords by applying deterministic mutations and optional length
 
 ```sh
 npwg --mutate --mutation-type swap --mutation-strength 2 --lengthen 3
+```
+
+#### Deterministic Mode
+
+Derive a stable password from a master password and service context (no randomness):
+
+```sh
+npwg --deterministic --service example.com --length 24
+```
+
+Include an optional username and counter to create distinct variants:
+
+```sh
+npwg --deterministic --service example.com --username alice --counter 2 --length 24
 ```
 
 Use interactive mode for guided generation and mutation prompts:

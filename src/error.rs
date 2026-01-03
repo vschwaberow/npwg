@@ -29,6 +29,8 @@ pub enum PasswordGeneratorError {
     ClipboardError(String),
     #[error("Clipboard unavailable: {0}")]
     ClipboardUnavailable(String),
+    #[error("KDF error: {0}")]
+    KdfError(String),
 }
 
 impl From<DialoguerError> for PasswordGeneratorError {

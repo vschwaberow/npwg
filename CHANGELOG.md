@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0]
+### Added
+- Deterministic password generation mode with `--deterministic`, `--service`, `--username`, and `--counter`.
+- QR code rendering support for generated passwords via `--qr`.
+### Changed
+- Deterministic mode derives passwords using Argon2id with a service-based salt.
+- Deterministic mode disables `--pattern`, `--mutate`, `--seed`, `--pronounceable`, and diceware options.
+
 ## [0.4.8]
 ### Fixed
 - Added `u32` value parser to `mutation_strength` CLI argument to ensure correct type validation.
