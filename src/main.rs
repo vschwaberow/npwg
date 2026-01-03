@@ -16,6 +16,7 @@ mod strength;
 
 const DAEMONIZE_ARG: &str = "__internal_daemonize";
 
+use std::io::Write;
 use std::process;
 
 use arboard::Clipboard;
@@ -32,6 +33,7 @@ use generator::{
 };
 use policy::{apply_policy, PolicyName};
 use profile::{apply_allowed_sets, apply_profile, load_user_profiles, parse_separator};
+use qrcodegen::{QrCode, QrCodeEcc};
 use stats::show_stats;
 use strength::{
     evaluate_password_strength, get_improvement_suggestions, get_strength_bar,
@@ -214,6 +216,12 @@ fn build_cli() -> Command {
                 .action(ArgAction::SetTrue),
         )
         .arg(
+            Arg::new("qr")
+                .long("qr")
+                .help("Print as QR code")
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
             Arg::new("pattern")
                 .short('p')
                 .long("pattern")
@@ -354,7 +362,7 @@ async fn handle_diceware(
     };
 
     let passphrases = generate_diceware_passphrase(&wordlist, config).await?;
-    passphrases.iter().for_each(|p| println!("{}", p.green()));
+    render_secrets(&passphrases, matches.get_flag("qr"))?;
 
     if copy && !passphrases.is_empty() {
         copy_to_clipboard(&passphrases.join("\n"))?;
@@ -362,7 +370,7 @@ async fn handle_diceware(
     }
 
     if matches.get_flag("strength") {
-        print_strength_meter(&passphrases);
+        print_strength_meter(&passphrases, !matches.get_flag("qr"));
     }
 
     if matches.get_flag("stats") {
@@ -378,7 +386,7 @@ async fn handle_password(
     copy: bool,
 ) -> Result<()> {
     let passwords = generate_passwords(config).await?;
-    passwords.iter().for_each(|p| println!("{}", p.green()));
+    render_secrets(&passwords, matches.get_flag("qr"))?;
 
     if copy && !passwords.is_empty() {
         copy_to_clipboard(&passwords.join("\n"))?;
@@ -386,7 +394,7 @@ async fn handle_password(
     }
 
     if matches.get_flag("strength") {
-        print_strength_meter(&passwords);
+        print_strength_meter(&passwords, !matches.get_flag("qr"));
     }
 
     if matches.get_flag("stats") {
@@ -403,7 +411,7 @@ async fn handle_pronounceable(
     copy: bool,
 ) -> Result<()> {
     let passwords = generate_pronounceable_passwords(config).await?;
-    passwords.iter().for_each(|p| println!("{}", p.green()));
+    render_secrets(&passwords, matches.get_flag("qr"))?;
 
     if copy && !passwords.is_empty() {
         copy_to_clipboard(&passwords.join("\n"))?;
@@ -411,7 +419,7 @@ async fn handle_pronounceable(
     }
 
     if matches.get_flag("strength") {
-        print_strength_meter(&passwords);
+        print_strength_meter(&passwords, !matches.get_flag("qr"));
     }
 
     if matches.get_flag("stats") {
@@ -469,13 +477,50 @@ async fn handle_mutation(
     }
 
     if matches.get_flag("strength") {
-        print_strength_meter(&passwords_clone);
+        print_strength_meter(&passwords_clone, true);
     }
 
     if matches.get_flag("stats") {
         print_stats(&passwords_clone);
     }
 
+    Ok(())
+}
+
+fn render_secrets(secrets: &[String], as_qr: bool) -> Result<()> {
+    if as_qr {
+        for secret in secrets {
+            print_qr(secret)?;
+        }
+    } else {
+        secrets.iter().for_each(|p| println!("{}", p.green()));
+    }
+    Ok(())
+}
+
+fn print_qr(text: &str) -> Result<()> {
+    let qr = QrCode::encode_text(text, QrCodeEcc::Medium)
+        .map_err(|e| PasswordGeneratorError::QrCode(format!("Failed to encode QR: {}", e)))?;
+    let size = qr.size();
+    let quiet_zone: i32 = 4;
+    let black = "\x1b[48;2;0;0;0m  \x1b[0m";
+    let white = "\x1b[48;2;255;255;255m  \x1b[0m";
+
+    let mut output = String::new();
+    for y in -quiet_zone..(size + quiet_zone) {
+        for x in -quiet_zone..(size + quiet_zone) {
+            let dark = if (0..size).contains(&x) && (0..size).contains(&y) {
+                qr.get_module(x, y)
+            } else {
+                false
+            };
+            output.push_str(if dark { black } else { white });
+        }
+        output.push('\n');
+    }
+
+    let mut stdout = std::io::stdout().lock();
+    stdout.write_all(output.as_bytes())?;
     Ok(())
 }
 
@@ -576,12 +621,17 @@ where
     setter(text)
 }
 
-fn print_strength_meter(data: &[String]) {
+fn print_strength_meter(data: &[String], show_password: bool) {
     println!("\n{}", "Password Strength:".blue().bold());
     for (i, password) in data.iter().enumerate() {
         let strength = evaluate_password_strength(password);
         let feedback = get_strength_feedback(strength);
         let strength_bar = get_strength_bar(strength);
+        let password_display = if show_password {
+            password.yellow().to_string()
+        } else {
+            "(hidden)".dimmed().to_string()
+        };
         println!(
             "Password {}: {} {:.2} {} {}",
             i + 1,
@@ -595,7 +645,7 @@ fn print_strength_meter(data: &[String]) {
                 "Very Strong" => "bright green",
                 _ => "white",
             }),
-            password.yellow()
+            password_display
         );
 
         if strength < 0.6 {
