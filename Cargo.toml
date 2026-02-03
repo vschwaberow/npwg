@@ -43,7 +43,7 @@ version = "0.9.1"
 features = ["std", "zeroize"]
 
 [dependencies.clap]
-version = "4.5.54"
+version = "4.5.56"
 features = ["cargo", "env", "derive"]
 
 [dependencies.tokio]
