@@ -47,7 +47,7 @@ version = "4.6.0"
 features = ["cargo", "env", "derive"]
 
 [dependencies.tokio]
-version = "1.51.1"
+version = "1.52.1"
 features = ["full"]
 
 [dependencies.reqwest]
