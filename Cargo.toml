@@ -18,7 +18,7 @@ path = "src/lib.rs"
 [dependencies]
 regex = "1.12.2"
 zeroize = "1.8.1"
-dashmap = "6.1.0"
+dashmap = "6.2.1"
 rand_distr = "0.5"
 dirs = "6.0.0"
 futures = "0.3.32"
