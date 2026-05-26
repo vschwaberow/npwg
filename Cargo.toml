@@ -51,7 +51,7 @@ version = "1.52.3"
 features = ["full"]
 
 [dependencies.reqwest]
-version = "0.13.3"
+version = "0.13.4"
 features = ["blocking"]
 
 [dependencies.serde]
