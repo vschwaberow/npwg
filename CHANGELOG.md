@@ -9,19 +9,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 - Restored builds against `sha2` 0.11 by encoding digests as hex bytes.
 - Linux clipboard helper no longer passes secrets via environment variables; secrets are delivered on stdin.
 - Diceware wordlists are verified against the pinned EFF large-wordlist SHA-256 instead of trust-on-first-use.
+- Diceware wordlists load immediately after the first download; no second run required.
 - `--mutate --copy` copies mutated passwords; strength and stats use the mutated values.
 - Password mutation indexes characters instead of UTF-8 bytes, avoiding panics on non-ASCII input.
 - `--avoid-repeating` again prevents consecutive duplicate characters when alternatives exist.
 - Pattern mode returns an error when a template symbol cannot be satisfied by the allowed character set.
+- Pattern mode errors when the template exceeds `--length` or cannot fill to the requested length.
+- Combining `--pattern` and `--pronounceable` is rejected instead of silently ignoring the pattern.
 - Pronounceable mode draws vowels and consonants only from the configured allowed characters.
 - Linux clipboard helper exits after 45 seconds and clears the clipboard instead of running forever.
+- Interactive passphrase mode prompts for words per passphrase and parses separators like the CLI.
+- Secrets are zeroized after diceware, interactive mutation, and CLI mutation paths.
+- Diceware separator and word selection no longer panic on empty sets.
+- Unknown charset names in `set_allowed_chars` return an error instead of falling back to `allprint`.
 - Removed unused dependencies (`chacha20`, `dashmap`, `regex`, `futures`, `rand_distr`).
 - Added CI workflow on push and pull request (fmt, clippy, test).
 ### Changed
-- `--strength` output is documented as a local heuristic estimate, not NIST or zxcvbn compliance.
-### Changed
 - Release workflow uploads Linux, Windows, and macOS binaries in a single published release.
 - `--seed` help text and a stderr warning clarify that seeded output is insecure for real secrets.
+- `--strength` output is documented as a local heuristic estimate, not NIST or zxcvbn compliance.
 
 ## [0.5.0]
 ### Added
