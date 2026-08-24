@@ -84,17 +84,19 @@ impl PasswordGeneratorConfig {
             pattern: None,
             seed: None,
         };
-        config.set_allowed_chars("allprint");
+        config.set_allowed_chars("allprint").expect("allprint charset is defined");
         config
     }
 
-    pub fn set_allowed_chars(&mut self, charset_name: &str) {
+    pub fn set_allowed_chars(&mut self, charset_name: &str) -> Result<()> {
         if let Some((_, chars)) = DEFINE.iter().find(|(name, _)| *name == charset_name) {
             self.allowed_chars = chars.chars().collect();
+            Ok(())
         } else {
-            if let Some((_, chars)) = DEFINE.iter().find(|(name, _)| *name == "allprint") {
-                self.allowed_chars = chars.chars().collect();
-            }
+            Err(PasswordGeneratorError::InvalidConfig(format!(
+                "Unknown character set '{}'",
+                charset_name
+            )))
         }
     }
 
@@ -146,6 +148,12 @@ impl PasswordGeneratorConfig {
             ));
         }
 
+        if self.pronounceable && self.pattern.is_some() {
+            return Err(PasswordGeneratorError::InvalidConfig(
+                "Cannot combine pronounceable mode with a pattern.".to_string(),
+            ));
+        }
+
         Ok(())
     }
     pub fn set_use_words(&mut self, use_words: bool) {
@@ -165,19 +173,21 @@ mod tests {
     fn test_set_allowed_chars() {
         let mut config = PasswordGeneratorConfig::new();
 
-        config.set_allowed_chars("digit");
+        config.set_allowed_chars("digit").unwrap();
         assert_eq!(
             config.allowed_chars,
             "0123456789".chars().collect::<Vec<char>>()
         );
 
-        config.set_allowed_chars("lowerletter");
+        config.set_allowed_chars("lowerletter").unwrap();
         assert_eq!(
             config.allowed_chars,
             "abcdefghijklmnopqrstuvwxyz".chars().collect::<Vec<char>>()
         );
 
-        config.set_allowed_chars("invalid_charset");
+        assert!(config.set_allowed_chars("invalid_charset").is_err());
+
+        config.set_allowed_chars("allprint").unwrap();
         let allprint_chars: Vec<char> = DEFINE
             .iter()
             .find(|&&(name, _)| name == "allprint")
@@ -185,16 +195,20 @@ mod tests {
             .unwrap();
         assert_eq!(config.allowed_chars, allprint_chars);
 
-        config.set_allowed_chars("allprint");
-        assert_eq!(config.allowed_chars, allprint_chars);
-
-        config.set_allowed_chars("homoglyph1");
+        config.set_allowed_chars("homoglyph1").unwrap();
         assert_eq!(config.allowed_chars, "71lI|".chars().collect::<Vec<char>>());
 
-        config.set_allowed_chars("");
-        assert_eq!(config.allowed_chars, allprint_chars);
+        assert!(config.set_allowed_chars("").is_err());
     }
 
+
+    #[test]
+    fn test_validate_rejects_pattern_with_pronounceable() {
+        let mut config = PasswordGeneratorConfig::new();
+        config.pronounceable = true;
+        config.pattern = Some("LLDDS".to_string());
+        assert!(config.validate().is_err());
+    }
     #[test]
     fn test_add_allowed_chars() {
         let mut config = PasswordGeneratorConfig::new();

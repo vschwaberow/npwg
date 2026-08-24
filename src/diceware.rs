@@ -32,7 +32,7 @@ pub async fn get_wordlist() -> Result<Vec<String>> {
     }
 
     download_wordlist(&workdir, &wordlist_path).await?;
-    Err(PasswordGeneratorError::WordlistDownloaded)
+    load_wordlist(&wordlist_path)
 }
 
 fn load_wordlist(wordlist_path: &Path) -> Result<Vec<String>> {

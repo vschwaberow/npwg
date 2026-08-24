@@ -187,12 +187,23 @@ pub fn generate_with_pattern(
         }
     }
 
+    let pattern_len = password.chars().count();
+    if pattern_len > length {
+        return Err(PasswordGeneratorError::InvalidConfig(format!(
+            "Pattern produces {} characters, which exceeds the requested length of {}.",
+            pattern_len, length
+        )));
+    }
+
     while password.chars().count() < length {
         if let Some(c) = choose_char(available_chars, &mut rng, last, avoid_repetition) {
             password.push(c);
             last = Some(c);
         } else {
-            break;
+            return Err(PasswordGeneratorError::InvalidConfig(
+                "Could not fill password to the requested length with the current settings."
+                    .to_string(),
+            ));
         }
     }
 
@@ -229,9 +240,14 @@ pub async fn generate_diceware_passphrase(
         let mut passphrase = String::with_capacity(num_words * 5 + (num_words - 1));
         for i in 0..num_words {
             if i > 0 {
-                passphrase.push_str(&get_separator(config, DEFAULT_SEPARATORS, &mut rng));
+                passphrase.push_str(&get_separator(config, DEFAULT_SEPARATORS, &mut rng)?);
             }
-            passphrase.push_str(wordlist.choose(&mut rng).unwrap());
+            let word = wordlist.choose(&mut rng).ok_or_else(|| {
+                PasswordGeneratorError::InvalidConfig(
+                    "Cannot choose a diceware word from an empty wordlist.".to_string(),
+                )
+            })?;
+            passphrase.push_str(word);
         }
         passphrases.push(passphrase);
     }
@@ -243,11 +259,24 @@ fn get_separator(
     config: &PasswordGeneratorConfig,
     default_separators: &[char],
     rng: &mut impl rand::Rng,
-) -> String {
+) -> Result<String> {
     match &config.separator {
-        Some(Separator::Fixed(c)) => c.to_string(),
-        Some(Separator::Random(chars)) => chars.choose(rng).unwrap().to_string(),
-        None => default_separators.choose(rng).unwrap().to_string(),
+        Some(Separator::Fixed(c)) => Ok(c.to_string()),
+        Some(Separator::Random(chars)) => {
+            chars.choose(rng).map(|c| c.to_string()).ok_or_else(|| {
+                PasswordGeneratorError::InvalidConfig(
+                    "Random separator character set is empty.".to_string(),
+                )
+            })
+        }
+        None => default_separators
+            .choose(rng)
+            .map(|c| c.to_string())
+            .ok_or_else(|| {
+                PasswordGeneratorError::InvalidConfig(
+                    "Default separator character set is empty.".to_string(),
+                )
+            }),
     }
 }
 
@@ -489,6 +518,13 @@ fn append_mapped_chars(bytes: &[u8], alphabet: &[char], target_len: usize, outpu
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_generate_with_pattern_rejects_pattern_longer_than_length() {
+        let available_chars: Vec<char> = "abc123!".chars().collect();
+        let result = generate_with_pattern("LLLLLLLLLL", &available_chars, 8, None, false);
+        assert!(result.is_err());
+    }
 
     #[test]
     fn test_generate_with_pattern_rejects_unfulfillable_symbols() {

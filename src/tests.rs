@@ -25,7 +25,7 @@ mod tests {
     #[tokio::test]
     async fn test_password_generator_config_new() {
         let mut config = PasswordGeneratorConfig::new();
-        config.set_allowed_chars("allprint");
+        config.set_allowed_chars("allprint").unwrap();
         assert_eq!(config.length, 16);
         assert_eq!(config.allowed_chars.len(), 94);
         assert!(config.excluded_chars.is_empty());
@@ -36,7 +36,7 @@ mod tests {
     #[test]
     fn test_password_generator_config_validate() {
         let mut config = PasswordGeneratorConfig::new();
-        config.set_allowed_chars("allprint");
+        config.set_allowed_chars("allprint").unwrap();
         assert!(config.validate().is_ok());
 
         config.allowed_chars.clear();
@@ -46,7 +46,7 @@ mod tests {
     #[tokio::test]
     async fn test_generate_password() {
         let mut config = PasswordGeneratorConfig::new();
-        config.set_allowed_chars("allprint");
+        config.set_allowed_chars("allprint").unwrap();
         let password = generate_password(&config).await.unwrap();
         assert_eq!(password.len(), 16);
     }
@@ -206,7 +206,7 @@ mod tests {
     #[tokio::test]
     async fn test_generate_password_with_all_chars_excluded() {
         let mut config = PasswordGeneratorConfig::new();
-        config.set_allowed_chars("digit");
+        config.set_allowed_chars("digit").unwrap();
         config.excluded_chars.extend("0123456789".chars());
         let result = generate_password(&config).await;
         assert!(
@@ -229,7 +229,7 @@ mod tests {
     #[test]
     fn test_mutate_password_replace_changes_character() {
         let mut config = PasswordGeneratorConfig::new();
-        config.set_allowed_chars("lowerletter");
+        config.set_allowed_chars("lowerletter").unwrap();
         config.seed = Some(42);
         let forced = MutationType::Replace;
         let original = "password";
@@ -241,7 +241,7 @@ mod tests {
     #[test]
     fn test_mutate_password_lengthen_appends_characters() {
         let mut config = PasswordGeneratorConfig::new();
-        config.set_allowed_chars("digit");
+        config.set_allowed_chars("digit").unwrap();
         config.seed = Some(7);
         let original = "1234";
         let mutated = mutate_password(original, &config, 3, 0, None);

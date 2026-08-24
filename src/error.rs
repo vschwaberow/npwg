@@ -15,8 +15,6 @@ pub enum PasswordGeneratorError {
     Io(#[from] std::io::Error),
     #[error("Network error: {0}")]
     Network(#[from] reqwest::Error),
-    #[error("Wordlist downloaded, restart the program to use it.")]
-    WordlistDownloaded,
     #[error("Wordlist validation failed: {0}")]
     WordlistValidation(String),
     #[error("Configuration error: {0}")]

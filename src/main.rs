@@ -191,7 +191,8 @@ fn build_cli() -> Command {
             Arg::new("pronounceable")
                 .long("pronounceable")
                 .help("Generate pronounceable passwords")
-                .action(ArgAction::SetTrue),
+                .action(ArgAction::SetTrue)
+                .conflicts_with("pattern"),
         )
         .arg(
             Arg::new("mutate")
@@ -237,7 +238,8 @@ fn build_cli() -> Command {
                 .short('p')
                 .long("pattern")
                 .help("Pattern for password generation (e.g., LLDDS)")
-                .value_parser(value_parser!(String)),
+                .value_parser(value_parser!(String))
+                .conflicts_with("pronounceable"),
         )
         .group(
             ArgGroup::new("generation")
@@ -402,14 +404,7 @@ async fn handle_diceware(
     matches: &clap::ArgMatches,
     copy: bool,
 ) -> Result<()> {
-    let wordlist = match diceware::get_wordlist().await {
-        Ok(list) => list,
-        Err(PasswordGeneratorError::WordlistDownloaded) => {
-            println!("Wordlist downloaded. Please run the program again.");
-            return Ok(());
-        }
-        Err(e) => return Err(e),
-    };
+    let wordlist = diceware::get_wordlist().await?;
 
     let passphrases = generate_diceware_passphrase(&wordlist, config).await?;
     render_secrets(&passphrases, matches.get_flag("qr"))?;
@@ -427,6 +422,7 @@ async fn handle_diceware(
         print_stats(&passphrases);
     }
 
+    passphrases.into_iter().for_each(|mut p| p.zeroize());
     Ok(())
 }
 
@@ -576,7 +572,7 @@ async fn handle_mutation(
     let mut mutated_passwords = Vec::with_capacity(passwords.len());
 
     println!("\n{}", "Mutated Passwords:".bold().green());
-    for password in passwords {
+    for mut password in passwords {
         let mutated = mutate_password(
             &password,
             config,
@@ -594,6 +590,7 @@ async fn handle_mutation(
             mutation_type_display
         );
         println!();
+        password.zeroize();
         mutated_passwords.push(mutated);
     }
 
