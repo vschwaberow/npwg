@@ -84,7 +84,9 @@ impl PasswordGeneratorConfig {
             pattern: None,
             seed: None,
         };
-        config.set_allowed_chars("allprint").expect("allprint charset is defined");
+        config
+            .set_allowed_chars("allprint")
+            .expect("allprint charset is defined");
         config
     }
 
@@ -154,6 +156,19 @@ impl PasswordGeneratorConfig {
             ));
         }
 
+        if self.mode == PasswordGeneratorMode::Diceware {
+            if self.pattern.is_some() {
+                return Err(PasswordGeneratorError::InvalidConfig(
+                    "Cannot combine diceware mode with a pattern.".to_string(),
+                ));
+            }
+            if self.pronounceable {
+                return Err(PasswordGeneratorError::InvalidConfig(
+                    "Cannot combine diceware mode with pronounceable passwords.".to_string(),
+                ));
+            }
+        }
+
         Ok(())
     }
     pub fn set_use_words(&mut self, use_words: bool) {
@@ -201,7 +216,6 @@ mod tests {
         assert!(config.set_allowed_chars("").is_err());
     }
 
-
     #[test]
     fn test_validate_rejects_pattern_with_pronounceable() {
         let mut config = PasswordGeneratorConfig::new();
@@ -209,6 +223,23 @@ mod tests {
         config.pattern = Some("LLDDS".to_string());
         assert!(config.validate().is_err());
     }
+
+    #[test]
+    fn test_validate_rejects_diceware_with_pattern() {
+        let mut config = PasswordGeneratorConfig::new();
+        config.set_use_words(true);
+        config.pattern = Some("LLDDS".to_string());
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_validate_rejects_diceware_with_pronounceable() {
+        let mut config = PasswordGeneratorConfig::new();
+        config.set_use_words(true);
+        config.pronounceable = true;
+        assert!(config.validate().is_err());
+    }
+
     #[test]
     fn test_add_allowed_chars() {
         let mut config = PasswordGeneratorConfig::new();

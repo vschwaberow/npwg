@@ -158,13 +158,7 @@ async fn generate_interactive_passphrase(term: &Term, theme: &ColorfulTheme) -> 
     config.separator = if separator.is_empty() {
         Some(parse_separator(" ")?)
     } else {
-        match parse_separator(&separator) {
-            Ok(sep) => Some(sep),
-            Err(_) => {
-                println!("Invalid separator. Using default (space).");
-                Some(parse_separator(" ")?)
-            }
-        }
+        Some(parse_separator(&separator)?)
     };
 
     config.validate()?;
@@ -238,7 +232,7 @@ async fn mutate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Resu
         lengthen,
         mutation_strength,
         Some(mutation_type),
-    );
+    )?;
 
     println!("\n{}", "Mutated Password:".bold().green());
     println!("Original: {}", password.yellow());

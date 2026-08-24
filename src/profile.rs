@@ -167,7 +167,7 @@ mod tests {
             use_words: Some(true),
             separator: Some("-".to_string()),
             pronounceable: Some(false),
-            pattern: Some("LLDDS".to_string()),
+            pattern: None,
             seed: Some(99),
         };
         apply_profile(&profile, &mut config).unwrap();
@@ -175,7 +175,6 @@ mod tests {
         assert_eq!(config.num_passwords, 3);
         assert!(config.avoid_repetition);
         assert_eq!(config.seed, Some(99));
-        assert_eq!(config.pattern.as_deref(), Some("LLDDS"));
         assert!(matches!(config.mode, PasswordGeneratorMode::Diceware));
         match config.separator.as_ref().unwrap() {
             Separator::Fixed(value) => assert_eq!(*value, '-'),
