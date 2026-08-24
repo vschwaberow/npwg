@@ -64,6 +64,13 @@ async fn main() -> Result<()> {
     }
 
     let config = build_config(&matches)?;
+    if config.seed.is_some() {
+        eprintln!(
+            "{}",
+            "Warning: --seed makes output predictable; do not use for real secrets."
+                .yellow()
+        );
+    }
 
     let copy = matches.get_flag("copy");
 
@@ -254,7 +261,7 @@ fn build_cli() -> Command {
                 .short('s')
                 .long("seed")
                 .value_name("SEED")
-                .help("Sets the seed for the random number generator")
+                .help("Seed the RNG for reproducible output (insecure for real secrets; testing only)")
                 .value_parser(value_parser!(u64)),
         )
         .arg(
@@ -566,7 +573,7 @@ async fn handle_mutation(
 
     let mutation_strength = matches.get_one::<u32>("mutation_strength").unwrap_or(&1);
 
-    let passwords_clone = passwords.clone();
+    let mut mutated_passwords = Vec::with_capacity(passwords.len());
 
     println!("\n{}", "Mutated Passwords:".bold().green());
     for password in passwords {
@@ -587,21 +594,23 @@ async fn handle_mutation(
             mutation_type_display
         );
         println!();
+        mutated_passwords.push(mutated);
     }
 
-    if copy && !passwords_clone.is_empty() {
-        copy_to_clipboard(&passwords_clone.join("\n"))?;
-        println!("{}", "Passphrase(s) copied to clipboard.".bold().green());
+    if copy && !mutated_passwords.is_empty() {
+        copy_to_clipboard(&mutated_passwords.join("\n"))?;
+        println!("{}", "Password(s) copied to clipboard.".bold().green());
     }
 
     if matches.get_flag("strength") {
-        print_strength_meter(&passwords_clone, true);
+        print_strength_meter(&mutated_passwords, true);
     }
 
     if matches.get_flag("stats") {
-        print_stats(&passwords_clone);
+        print_stats(&mutated_passwords);
     }
 
+    mutated_passwords.into_iter().for_each(|mut p| p.zeroize());
     Ok(())
 }
 
@@ -643,28 +652,33 @@ fn print_qr(text: &str) -> Result<()> {
 }
 
 fn copy_to_clipboard(text: &str) -> Result<()> {
-    ensure_clipboard_text(text)?;
     #[cfg(target_os = "linux")]
     {
         use std::env;
+        use std::io::Read;
 
         if env::args().any(|arg| arg == DAEMONIZE_ARG) {
-            let text = env::var("CLIPBOARD_TEXT").map_err(|_| {
-                PasswordGeneratorError::ClipboardError(
-                    "Failed to read CLIPBOARD_TEXT environment variable".to_string(),
-                )
+            let mut text = String::new();
+            std::io::stdin().read_to_string(&mut text).map_err(|e| {
+                PasswordGeneratorError::ClipboardError(format!(
+                    "Failed to read clipboard secret from stdin: {}",
+                    e
+                ))
             })?;
+            ensure_clipboard_text(&text)?;
             write_to_clipboard(&text)?;
             loop {
                 std::thread::sleep(std::time::Duration::from_secs(1));
             }
         } else {
+            ensure_clipboard_text(text)?;
             spawn_clipboard_daemon(text)?;
         }
     }
 
     #[cfg(not(target_os = "linux"))]
     {
+        ensure_clipboard_text(text)?;
         write_to_clipboard(text)?;
     }
 
@@ -682,23 +696,36 @@ fn ensure_clipboard_text(text: &str) -> Result<()> {
 
 #[cfg(target_os = "linux")]
 fn spawn_clipboard_daemon(text: &str) -> Result<()> {
+    use std::io::Write;
     use std::{env, process};
 
-    process::Command::new(env::current_exe()?)
+    let mut child = process::Command::new(env::current_exe()?)
         .arg(DAEMONIZE_ARG)
-        .stdin(process::Stdio::null())
+        .stdin(process::Stdio::piped())
         .stdout(process::Stdio::null())
         .stderr(process::Stdio::null())
-        .env("CLIPBOARD_TEXT", text)
         .current_dir("/")
         .spawn()
-        .map(|_| ())
         .map_err(|e| {
             PasswordGeneratorError::ClipboardUnavailable(format!(
                 "Failed to spawn clipboard helper: {}",
                 e
             ))
-        })
+        })?;
+
+    let mut stdin = child.stdin.take().ok_or_else(|| {
+        PasswordGeneratorError::ClipboardUnavailable(
+            "Failed to open clipboard helper stdin".to_string(),
+        )
+    })?;
+    stdin.write_all(text.as_bytes()).map_err(|e| {
+        PasswordGeneratorError::ClipboardUnavailable(format!(
+            "Failed to write clipboard secret to helper: {}",
+            e
+        ))
+    })?;
+    drop(stdin);
+    Ok(())
 }
 
 #[cfg(target_os = "linux")]
