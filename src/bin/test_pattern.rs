@@ -6,7 +6,7 @@ fn main() {
     let length = 10;
     let seed = None;
 
-    match generate_with_pattern(pattern, &available_chars, length, seed) {
+    match generate_with_pattern(pattern, &available_chars, length, seed, false) {
         Ok(password) => {
             println!("Password generated: {}", password);
             println!("Password length: {}", password.len());

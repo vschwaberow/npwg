@@ -72,12 +72,20 @@ pub async fn generate_password(config: &PasswordGeneratorConfig) -> Result<Strin
     let available_chars = effective_allowed_chars(config)?;
 
     if let Some(pattern) = &config.pattern {
-        return generate_with_pattern(pattern, &available_chars, config.length, config.seed);
+        return generate_with_pattern(
+            pattern,
+            &available_chars,
+            config.length,
+            config.seed,
+            config.avoid_repetition,
+        );
     }
 
+    let mut last: Option<char> = None;
     for _ in 0..config.length {
-        if let Some(&c) = available_chars.choose(&mut rng) {
+        if let Some(c) = choose_char(&available_chars, &mut rng, last, config.avoid_repetition) {
             password.push(c);
+            last = Some(c);
         }
     }
 
@@ -123,6 +131,7 @@ pub fn generate_with_pattern(
     available_chars: &[char],
     length: usize,
     seed: Option<u64>,
+    avoid_repetition: bool,
 ) -> Result<String> {
     if available_chars.is_empty() {
         return Err(PasswordGeneratorError::InvalidConfig(
@@ -135,32 +144,40 @@ pub fn generate_with_pattern(
         None => StdRng::from_rng(&mut rand::rng()),
     };
     let mut password = String::with_capacity(length);
+    let mut last: Option<char> = None;
 
     for symbol in pattern.chars() {
-        let char_opt = match symbol {
+        let pool: Vec<char> = match symbol {
             'L' | 'l' => available_chars
                 .iter()
+                .copied()
                 .filter(|c| c.is_ascii_alphabetic())
-                .choose(&mut rng),
+                .collect(),
             'D' | 'd' => available_chars
                 .iter()
+                .copied()
                 .filter(|c| c.is_ascii_digit())
-                .choose(&mut rng),
+                .collect(),
             'S' | 's' => available_chars
                 .iter()
+                .copied()
                 .filter(|c| !c.is_ascii_alphanumeric())
-                .choose(&mut rng),
-            _ => None,
+                .collect(),
+            _ => Vec::new(),
         };
 
-        if let Some(&c) = char_opt {
+        if let Some(c) = choose_char(&pool, &mut rng, last, avoid_repetition) {
             password.push(c);
+            last = Some(c);
         }
     }
 
-    while password.len() < length {
-        if let Some(&c) = available_chars.choose(&mut rng) {
+    while password.chars().count() < length {
+        if let Some(c) = choose_char(available_chars, &mut rng, last, avoid_repetition) {
             password.push(c);
+            last = Some(c);
+        } else {
+            break;
         }
     }
 
@@ -284,10 +301,11 @@ pub fn mutate_password(
         None => StdRng::from_rng(&mut rand::rng()),
     };
     let mut mutated = password.to_string();
-    let mutation_count = mutation_strength.min(mutated.len() as u32);
+    let mutation_count = mutation_strength.min(mutated.chars().count() as u32);
 
     for _ in 0..mutation_count {
-        if mutated.is_empty() {
+        let char_len = mutated.chars().count();
+        if char_len == 0 {
             break;
         }
 
@@ -302,16 +320,12 @@ pub fn mutate_password(
                 _ => unreachable!(),
             },
         };
-        let index = if mutated.is_empty() {
-            0
-        } else {
-            rng.random_range(0..mutated.len())
-        };
+        let index = rng.random_range(0..char_len);
 
         match current_mutation_type {
             MutationType::Replace => {
-                if !mutated.is_empty() {
-                    let char_to_replace = mutated.chars().nth(index).unwrap();
+                if let Some((start, end)) = char_byte_range(&mutated, index) {
+                    let char_to_replace = mutated[start..end].chars().next().unwrap();
                     let new_char = config
                         .allowed_chars
                         .iter()
@@ -319,7 +333,7 @@ pub fn mutate_password(
                         .choose(&mut rng)
                         .copied()
                         .unwrap_or(char_to_replace);
-                    mutated.replace_range(index..index + 1, &new_char.to_string());
+                    mutated.replace_range(start..end, &new_char.to_string());
                 }
             }
             MutationType::Insert => {
@@ -328,30 +342,34 @@ pub fn mutate_password(
                     .choose(&mut rng)
                     .copied()
                     .unwrap_or('a');
-                mutated.insert(index, new_char);
+                if let Some((start, _)) = char_byte_range(&mutated, index) {
+                    mutated.insert(start, new_char);
+                } else {
+                    mutated.push(new_char);
+                }
             }
             MutationType::Remove => {
-                if !mutated.is_empty() {
-                    mutated.remove(index);
+                if let Some((start, end)) = char_byte_range(&mutated, index) {
+                    mutated.replace_range(start..end, "");
                 }
             }
             MutationType::Swap => {
-                if mutated.len() > 1 {
-                    let index2 =
-                        (index + 1 + rng.random_range(0..mutated.len() - 1)) % mutated.len();
+                if char_len > 1 {
+                    let index2 = (index + 1 + rng.random_range(0..char_len - 1)) % char_len;
                     if index != index2 {
-                        let char1 = mutated.chars().nth(index).unwrap();
-                        let char2 = mutated.chars().nth(index2).unwrap();
-                        mutated.replace_range(index..index + 1, &char2.to_string());
-                        mutated.replace_range(index2..index2 + 1, &char1.to_string());
+                        let mut chars: Vec<char> = mutated.chars().collect();
+                        chars.swap(index, index2);
+                        mutated = chars.into_iter().collect();
                     }
                 }
             }
             MutationType::Shift => {
-                if mutated.len() > 1 {
-                    let shift_amount = rng.random_range(1..mutated.len());
-                    let (first, second) = mutated.split_at(shift_amount);
-                    mutated = format!("{}{}", second, first);
+                if char_len > 1 {
+                    let shift_amount = rng.random_range(1..char_len);
+                    if let Some((byte_idx, _)) = char_byte_range(&mutated, shift_amount) {
+                        let (first, second) = mutated.split_at(byte_idx);
+                        mutated = format!("{}{}", second, first);
+                    }
                 }
             }
         }
@@ -366,6 +384,33 @@ pub fn mutate_password(
     }
 
     mutated
+}
+
+fn choose_char(
+    chars: &[char],
+    rng: &mut impl Rng,
+    last: Option<char>,
+    avoid_repetition: bool,
+) -> Option<char> {
+    if chars.is_empty() {
+        return None;
+    }
+    if avoid_repetition {
+        if let Some(last) = last {
+            let alternatives: Vec<char> = chars.iter().copied().filter(|&c| c != last).collect();
+            if !alternatives.is_empty() {
+                return alternatives.choose(rng).copied();
+            }
+        }
+    }
+    chars.choose(rng).copied()
+}
+
+fn char_byte_range(s: &str, char_index: usize) -> Option<(usize, usize)> {
+    let mut indices = s.char_indices();
+    let (start, _) = indices.nth(char_index)?;
+    let end = indices.next().map(|(i, _)| i).unwrap_or(s.len());
+    Some((start, end))
 }
 
 pub fn effective_allowed_chars(config: &PasswordGeneratorConfig) -> Result<Vec<char>> {
@@ -440,7 +485,7 @@ mod tests {
         let length = 10;
         let seed = None;
 
-        let result = generate_with_pattern(pattern, &available_chars, length, seed);
+        let result = generate_with_pattern(pattern, &available_chars, length, seed, false);
         assert!(
             result.is_ok(),
             "Expected successful generation despite unfulfillable pattern"
@@ -513,4 +558,26 @@ mod tests {
         .unwrap();
         assert_ne!(first, second);
     }
+
+    #[tokio::test]
+    async fn test_avoid_repetition_with_seed() {
+        let mut config = PasswordGeneratorConfig::new();
+        config.clear_allowed_chars();
+        config.allowed_chars = vec!['a', 'b'];
+        config.length = 20;
+        config.seed = Some(42);
+        config.avoid_repetition = true;
+        let password = generate_password(&config).await.unwrap();
+        let chars: Vec<char> = password.chars().collect();
+        assert!(chars.windows(2).all(|w| w[0] != w[1]));
+    }
+
+    #[test]
+    fn test_mutate_password_handles_unicode() {
+        let mut config = PasswordGeneratorConfig::new();
+        config.seed = Some(7);
+        let mutated = mutate_password("äöüß", &config, 0, 3, Some(&MutationType::Swap));
+        assert_eq!(mutated.chars().count(), 4);
+    }
+
 }

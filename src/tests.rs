@@ -386,7 +386,7 @@ mod pattern_tests {
         let length = 10;
         let seed = None;
 
-        let result = generate_with_pattern(pattern, &available_chars, length, seed);
+        let result = generate_with_pattern(pattern, &available_chars, length, seed, false);
         assert!(
             result.is_ok(),
             "Expected successful generation despite unfulfillable pattern"
