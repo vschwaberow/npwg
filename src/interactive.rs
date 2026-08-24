@@ -40,7 +40,7 @@ pub async fn interactive_mode() -> Result<()> {
             .items(&options)
             .default(0)
             .interact_on(&term)
-            .map_err(|e| PasswordGeneratorError::DialoguerError(e))?;
+            .map_err(PasswordGeneratorError::DialoguerError)?;
 
         match selection {
             0 => generate_interactive_password(&term, &theme).await?,
@@ -54,7 +54,7 @@ pub async fn interactive_mode() -> Result<()> {
             .with_prompt("Do you want to perform another action?")
             .default(true)
             .interact_on(&term)
-            .map_err(|e| PasswordGeneratorError::DialoguerError(e))?
+            .map_err(PasswordGeneratorError::DialoguerError)?
         {
             break;
         }
@@ -248,7 +248,7 @@ async fn mutate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Resu
         .default(true)
         .interact_on(term)?
     {
-        print_strength_meter(&vec![password.clone(), mutated.clone()]);
+        print_strength_meter(&[password.clone(), mutated.clone()]);
     }
 
     if Confirm::with_theme(theme)
@@ -256,7 +256,7 @@ async fn mutate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Resu
         .default(false)
         .interact_on(term)?
     {
-        print_stats(&vec![password, mutated]);
+        print_stats(&[password, mutated]);
     }
 
     Ok(())
