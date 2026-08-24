@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 ### Changed
 - `--strength` output is documented as a local heuristic estimate, not NIST or zxcvbn compliance.
 ### Changed
+- Release workflow uploads Linux, Windows, and macOS binaries in a single published release.
 - `--seed` help text and a stderr warning clarify that seeded output is insecure for real secrets.
 
 ## [0.5.0]
