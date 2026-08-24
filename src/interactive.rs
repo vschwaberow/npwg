@@ -4,13 +4,14 @@
 // Author: Volker Schwaberow <volker@schwaberow.de>
 // Copyright (c) 2022 Volker Schwaberow
 
-use crate::config::{PasswordGeneratorConfig, Separator};
+use crate::config::PasswordGeneratorConfig;
 use crate::diceware;
 use crate::error::{PasswordGeneratorError, Result};
 use crate::generator::{
     generate_diceware_passphrase, generate_passwords, generate_pronounceable_passwords,
     mutate_password, MutationType,
 };
+use crate::profile::parse_separator;
 use crate::stats::show_stats;
 use crate::strength::{
     evaluate_password_strength, get_improvement_suggestions, get_strength_bar,
@@ -90,7 +91,6 @@ async fn generate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Re
     config.num_passwords = count as usize;
     config.set_avoid_repeating(avoid_repeating);
     config.pronounceable = pronounceable;
-    config.validate()?;
 
     let pattern = Input::with_theme(theme)
         .with_prompt("Enter desired pattern or leave empty for no pattern")
@@ -100,6 +100,8 @@ async fn generate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Re
     if !pattern.is_empty() {
         config.pattern = Some(pattern);
     }
+
+    config.validate()?;
 
     let passwords = if pronounceable {
         generate_pronounceable_passwords(&config).await?
@@ -136,33 +138,31 @@ async fn generate_interactive_passphrase(term: &Term, theme: &ColorfulTheme) -> 
         .default(1)
         .interact_on(term)?;
 
+    let words: u8 = Input::with_theme(theme)
+        .with_prompt("Number of words per passphrase")
+        .default(6)
+        .interact_on(term)?;
+
     let separator: String = Input::with_theme(theme)
         .with_prompt("Separator (single character, 'random', or press Enter for space)")
         .allow_empty(true)
         .interact_on(term)?;
 
-    let wordlist = match diceware::get_wordlist().await {
-        Ok(list) => list,
-        Err(PasswordGeneratorError::WordlistDownloaded) => {
-            println!("Wordlist downloaded. Please run the program again.");
-            return Ok(());
-        }
-        Err(e) => return Err(e),
-    };
+    let wordlist = diceware::get_wordlist().await?;
 
     let mut config = PasswordGeneratorConfig::new();
     config.num_passwords = count as usize;
+    config.length = words as usize;
     config.set_use_words(true);
 
     config.separator = if separator.is_empty() {
-        Some(Separator::Fixed(' '))
+        Some(parse_separator(" ")?)
     } else {
-        match separator.as_str() {
-            "random" => Some(Separator::Random(('a'..='z').chain('0'..='9').collect())),
-            s if s.len() == 1 => Some(Separator::Fixed(s.chars().next().unwrap())),
-            _ => {
+        match parse_separator(&separator) {
+            Ok(sep) => Some(sep),
+            Err(_) => {
                 println!("Invalid separator. Using default (space).");
-                Some(Separator::Fixed(' '))
+                Some(parse_separator(" ")?)
             }
         }
     };
@@ -189,11 +189,12 @@ async fn generate_interactive_passphrase(term: &Term, theme: &ColorfulTheme) -> 
         print_stats(&passphrases);
     }
 
+    passphrases.into_iter().for_each(|mut p| p.zeroize());
     Ok(())
 }
 
 async fn mutate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Result<()> {
-    let password: String = Input::with_theme(theme)
+    let mut password: String = Input::with_theme(theme)
         .with_prompt("Enter the password to mutate")
         .interact_on(term)?;
 
@@ -231,7 +232,7 @@ async fn mutate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Resu
         .interact_on(term)?;
     let mutation_type = &mutation_types[mutation_type_index];
 
-    let mutated = mutate_password(
+    let mut mutated = mutate_password(
         &password,
         &config,
         lengthen,
@@ -256,9 +257,11 @@ async fn mutate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Resu
         .default(false)
         .interact_on(term)?
     {
-        print_stats(&[password, mutated]);
+        print_stats(&[password.clone(), mutated.clone()]);
     }
 
+    password.zeroize();
+    mutated.zeroize();
     Ok(())
 }
 
