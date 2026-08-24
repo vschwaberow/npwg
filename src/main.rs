@@ -15,6 +15,7 @@ mod stats;
 mod strength;
 
 const DAEMONIZE_ARG: &str = "__internal_daemonize";
+const CLIPBOARD_DAEMON_HOLD_SECS: u64 = 45;
 
 use std::io::Write;
 use std::process;
@@ -67,8 +68,7 @@ async fn main() -> Result<()> {
     if config.seed.is_some() {
         eprintln!(
             "{}",
-            "Warning: --seed makes output predictable; do not use for real secrets."
-                .yellow()
+            "Warning: --seed makes output predictable; do not use for real secrets.".yellow()
         );
     }
 
@@ -667,9 +667,9 @@ fn copy_to_clipboard(text: &str) -> Result<()> {
             })?;
             ensure_clipboard_text(&text)?;
             write_to_clipboard(&text)?;
-            loop {
-                std::thread::sleep(std::time::Duration::from_secs(1));
-            }
+            std::thread::sleep(std::time::Duration::from_secs(CLIPBOARD_DAEMON_HOLD_SECS));
+            clear_clipboard()?;
+            return Ok(());
         } else {
             ensure_clipboard_text(text)?;
             spawn_clipboard_daemon(text)?;
@@ -725,6 +725,25 @@ fn spawn_clipboard_daemon(text: &str) -> Result<()> {
         ))
     })?;
     drop(stdin);
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn clear_clipboard() -> Result<()> {
+    let mut clipboard = Clipboard::new().map_err(|e| {
+        PasswordGeneratorError::ClipboardUnavailable(format!(
+            "Unable to access clipboard backend for clear: {}",
+            e
+        ))
+    })?;
+    clipboard.clear().map_err(|e| {
+        PasswordGeneratorError::ClipboardError(format!("Failed to clear clipboard: {}", e))
+    })?;
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn clear_clipboard() -> Result<()> {
     Ok(())
 }
 
