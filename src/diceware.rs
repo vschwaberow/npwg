@@ -38,7 +38,16 @@ pub async fn get_wordlist() -> Result<Vec<String>> {
 fn load_wordlist(wordlist_path: &Path) -> Result<Vec<String>> {
     let contents = fs::read_to_string(wordlist_path)?;
     validate_wordlist(&contents, wordlist_path)?;
-    Ok(parse_wordlist(&contents))
+    let words = parse_wordlist(&contents);
+    if words.len() != EXPECTED_WORDLIST_LINES {
+        return Err(PasswordGeneratorError::WordlistValidation(format!(
+            "Expected {} words in {}, parsed {}",
+            EXPECTED_WORDLIST_LINES,
+            wordlist_path.display(),
+            words.len()
+        )));
+    }
+    Ok(words)
 }
 
 async fn download_wordlist(workdir: &Path, wordlist_path: &Path) -> Result<()> {
