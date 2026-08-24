@@ -336,10 +336,12 @@ pub fn mutate_password(
     lengthen: usize,
     mutation_strength: u32,
     forced_mutation_type: Option<&MutationType>,
-) -> String {
+) -> Result<String> {
     if password.is_empty() {
-        return String::new();
+        return Ok(String::new());
     }
+
+    let allowed_chars = effective_allowed_chars(config)?;
 
     let mut rng = match config.seed {
         Some(seed) => StdRng::seed_from_u64(seed),
@@ -371,8 +373,7 @@ pub fn mutate_password(
             MutationType::Replace => {
                 if let Some((start, end)) = char_byte_range(&mutated, index) {
                     let char_to_replace = mutated[start..end].chars().next().unwrap();
-                    let new_char = config
-                        .allowed_chars
+                    let new_char = allowed_chars
                         .iter()
                         .filter(|&&c| c != char_to_replace)
                         .choose(&mut rng)
@@ -382,11 +383,7 @@ pub fn mutate_password(
                 }
             }
             MutationType::Insert => {
-                let new_char = config
-                    .allowed_chars
-                    .choose(&mut rng)
-                    .copied()
-                    .unwrap_or('a');
+                let new_char = allowed_chars.choose(&mut rng).copied().unwrap_or('a');
                 if let Some((start, _)) = char_byte_range(&mutated, index) {
                     mutated.insert(start, new_char);
                 } else {
@@ -422,13 +419,13 @@ pub fn mutate_password(
 
     if lengthen > 0 {
         for _ in 0..lengthen {
-            if let Some(&c) = config.allowed_chars.choose(&mut rng) {
+            if let Some(&c) = allowed_chars.choose(&mut rng) {
                 mutated.push(c);
             }
         }
     }
 
-    mutated
+    Ok(mutated)
 }
 
 fn choose_char(
@@ -638,7 +635,7 @@ mod tests {
     fn test_mutate_password_handles_unicode() {
         let mut config = PasswordGeneratorConfig::new();
         config.seed = Some(7);
-        let mutated = mutate_password("äöüß", &config, 0, 3, Some(&MutationType::Swap));
+        let mutated = mutate_password("äöüß", &config, 0, 3, Some(&MutationType::Swap)).unwrap();
         assert_eq!(mutated.chars().count(), 4);
     }
 }

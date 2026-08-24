@@ -233,7 +233,7 @@ mod tests {
         config.seed = Some(42);
         let forced = MutationType::Replace;
         let original = "password";
-        let mutated = mutate_password(original, &config, 0, 1, Some(&forced));
+        let mutated = mutate_password(original, &config, 0, 1, Some(&forced)).unwrap();
         assert_eq!(mutated.len(), original.len());
         assert_ne!(mutated, original);
     }
@@ -244,12 +244,22 @@ mod tests {
         config.set_allowed_chars("digit").unwrap();
         config.seed = Some(7);
         let original = "1234";
-        let mutated = mutate_password(original, &config, 3, 0, None);
+        let mutated = mutate_password(original, &config, 3, 0, None).unwrap();
         assert_eq!(mutated.len(), original.len() + 3);
         assert!(mutated.starts_with(original));
     }
-}
 
+    #[test]
+    fn test_mutate_password_respects_excluded_chars() {
+        let mut config = PasswordGeneratorConfig::new();
+        config.set_allowed_chars("lowerletter").unwrap();
+        config.excluded_chars.extend("aeiou".chars());
+        config.seed = Some(99);
+        let original = "bcdfg";
+        let mutated = mutate_password(original, &config, 5, 0, None).unwrap();
+        assert!(!mutated.chars().any(|c| "aeiou".contains(c)));
+    }
+}
 #[cfg(test)]
 mod strength_tests {
     use crate::strength::{calculate_entropy, get_theoretical_char_set_size};
