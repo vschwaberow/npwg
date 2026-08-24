@@ -11,7 +11,7 @@ npwg is a secure password generator written in Rust. With npwg, you can easily g
 - Customizable password length, count, character sets, and separators
 - Avoid repeating characters in passwords
 - Display statistics about the generated passwords
-- Show the estimated strength of the generated passwords
+- Show a local heuristic strength estimate for generated passwords (not NIST or zxcvbn)
 - Interactive mode for easy password generation
 - Deterministic mode for password derivation from a master password and service
 
@@ -56,12 +56,12 @@ npwg [OPTIONS]
 - `-c, --count <COUNT>`: Sets the number of passwords to generate [default: 1]
 - `--avoid-repeating`: Avoid consecutive repeating characters in the password
 - `--stats`: Show statistics about the generated passwords
-- `--strength`: Show strength meter for the generated passwords
+- `--strength`: Show a local heuristic strength estimate (not a formal compliance check)
 - `-a, --allowed <CHARS>`: Sets the allowed characters [default: allprint]
 - `--use-words`: Use diceware words instead of characters (EFF large wordlist, SHA-256 pinned)
 - `-i, --interactive`: Start interactive console mode
 - `--separator <SEPARATOR>`: Sets the separator for diceware passphrases (single character or 'random')
-- `--pronounceable`: Generate pronounceable passwords
+- `--pronounceable`: Generate pronounceable passwords from allowed vowels and consonants
 - `--mutate`: Mutate the passwords (`--copy` copies the mutated results)
 - `--mutation-type <TYPE>`: Type of mutation to apply [default: replace]
 - `--mutation-strength <STRENGTH>`: Strength of mutation [default: 1]
@@ -109,7 +109,7 @@ Inspect entropy and statistics in one pass:
 npwg --strength --stats
 ```
 
-Copy freshly generated secrets to the clipboard (on Linux the helper receives the secret on stdin, not via the environment):
+Copy freshly generated secrets to the clipboard (on Linux the helper reads stdin, holds for 45 seconds, then clears and exits):
 
 ```sh
 npwg --copy
@@ -138,13 +138,13 @@ npwg --use-words --separator random --length 7
 
 #### Pronounceable and Pattern Modes
 
-Create pronounceable strings that alternate consonants and vowels:
+Create pronounceable strings that alternate consonants and vowels from the allowed character set:
 
 ```sh
 npwg --pronounceable --length 10
 ```
 
-Enforce structural patterns (L=letter, D=digit, S=symbol):
+Enforce structural patterns (L=letter, D=digit, S=symbol). Unfulfillable symbols error out:
 
 ```sh
 npwg --pattern LLDDS --length 16

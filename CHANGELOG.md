@@ -12,6 +12,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 - `--mutate --copy` copies mutated passwords; strength and stats use the mutated values.
 - Password mutation indexes characters instead of UTF-8 bytes, avoiding panics on non-ASCII input.
 - `--avoid-repeating` again prevents consecutive duplicate characters when alternatives exist.
+- Pattern mode returns an error when a template symbol cannot be satisfied by the allowed character set.
+- Pronounceable mode draws vowels and consonants only from the configured allowed characters.
+- Linux clipboard helper exits after 45 seconds and clears the clipboard instead of running forever.
+- Removed unused dependencies (`chacha20`, `dashmap`, `regex`, `futures`, `rand_distr`).
+- Added CI workflow on push and pull request (fmt, clippy, test).
+### Changed
+- `--strength` output is documented as a local heuristic estimate, not NIST or zxcvbn compliance.
 ### Changed
 - `--seed` help text and a stderr warning clarify that seeded output is insecure for real secrets.
 
