@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2]
+### Fixed
+- Restored builds against `sha2` 0.11 by encoding digests as hex bytes.
+- Linux clipboard helper no longer passes secrets via environment variables; secrets are delivered on stdin.
+- Diceware wordlists are verified against the pinned EFF large-wordlist SHA-256 instead of trust-on-first-use.
+- `--mutate --copy` copies mutated passwords; strength and stats use the mutated values.
+- Password mutation indexes characters instead of UTF-8 bytes, avoiding panics on non-ASCII input.
+- `--avoid-repeating` again prevents consecutive duplicate characters when alternatives exist.
+### Changed
+- `--seed` help text and a stderr warning clarify that seeded output is insecure for real secrets.
+
 ## [0.5.0]
 ### Added
 - Deterministic password generation mode with `--deterministic`, `--service`, `--username`, and `--counter`.
