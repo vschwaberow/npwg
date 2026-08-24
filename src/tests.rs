@@ -54,17 +54,23 @@ mod tests {
     #[tokio::test]
     async fn test_generate_pronounceable_password_pattern() {
         let mut config = PasswordGeneratorConfig::new();
+        config.clear_allowed_chars();
+        config.allowed_chars = "aeb".chars().collect();
         config.pronounceable = true;
         config.length = 8;
+        config.seed = Some(9);
         let password = generate_pronounceable_password(&config).await.unwrap();
-        assert_eq!(password.len(), 8);
-        let consonants = "bcdfghjklmnpqrstvwxyz";
-        let vowels = "aeiou";
+        assert_eq!(password.chars().count(), 8);
+        let vowels: Vec<char> = "aeb".chars().filter(|c| "aeiou".contains(*c)).collect();
+        let consonants: Vec<char> = "aeb"
+            .chars()
+            .filter(|c| c.is_ascii_alphabetic() && !"aeiou".contains(*c))
+            .collect();
         for (idx, ch) in password.chars().enumerate() {
             if idx % 2 == 0 {
-                assert!(consonants.contains(ch));
+                assert!(consonants.contains(&ch));
             } else {
-                assert!(vowels.contains(ch));
+                assert!(vowels.contains(&ch));
             }
         }
     }
@@ -380,36 +386,13 @@ mod pattern_tests {
     use crate::generator::generate_with_pattern;
 
     #[test]
-    fn test_generate_with_pattern_skip_unfulfillable_chars() {
+    fn test_generate_with_pattern_rejects_unfulfillable_symbols() {
         let available_chars: Vec<char> = "abcdefg".chars().collect();
         let pattern = "LDLS";
         let length = 10;
         let seed = None;
 
         let result = generate_with_pattern(pattern, &available_chars, length, seed, false);
-        assert!(
-            result.is_ok(),
-            "Expected successful generation despite unfulfillable pattern"
-        );
-
-        let password = result.unwrap();
-        assert_eq!(
-            password.len(),
-            length,
-            "Password should match the requested length"
-        );
-
-        for c in password.chars() {
-            assert!(
-                available_chars.contains(&c),
-                "Password contains character not in available_chars: {}",
-                c
-            );
-        }
-
-        assert!(
-            !password.chars().any(|c| c.is_ascii_digit()),
-            "Password should not contain digits"
-        );
+        assert!(result.is_err());
     }
 }

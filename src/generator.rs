@@ -118,12 +118,45 @@ pub fn generate_deterministic_password(
         )?;
         append_mapped_chars(&block, allowed_chars, length, &mut output);
         block.zeroize();
-        block_index = block_index
-            .checked_add(1)
-            .ok_or_else(|| PasswordGeneratorError::InvalidConfig("Counter overflow.".to_string()))?;
+        block_index = block_index.checked_add(1).ok_or_else(|| {
+            PasswordGeneratorError::InvalidConfig("Counter overflow.".to_string())
+        })?;
     }
 
     Ok(output)
+}
+
+fn pattern_pool(symbol: char, available_chars: &[char]) -> Result<Vec<char>> {
+    let pool: Vec<char> = match symbol {
+        'L' | 'l' => available_chars
+            .iter()
+            .copied()
+            .filter(|c| c.is_ascii_alphabetic())
+            .collect(),
+        'D' | 'd' => available_chars
+            .iter()
+            .copied()
+            .filter(|c| c.is_ascii_digit())
+            .collect(),
+        'S' | 's' => available_chars
+            .iter()
+            .copied()
+            .filter(|c| !c.is_ascii_alphanumeric())
+            .collect(),
+        _ => {
+            return Err(PasswordGeneratorError::InvalidConfig(format!(
+                "Invalid pattern symbol '{}'. Use L, D, or S.",
+                symbol
+            )));
+        }
+    };
+    if pool.is_empty() {
+        return Err(PasswordGeneratorError::InvalidConfig(format!(
+            "Pattern symbol '{}' cannot be satisfied with the current allowed characters.",
+            symbol
+        )));
+    }
+    Ok(pool)
 }
 
 pub fn generate_with_pattern(
@@ -147,25 +180,7 @@ pub fn generate_with_pattern(
     let mut last: Option<char> = None;
 
     for symbol in pattern.chars() {
-        let pool: Vec<char> = match symbol {
-            'L' | 'l' => available_chars
-                .iter()
-                .copied()
-                .filter(|c| c.is_ascii_alphabetic())
-                .collect(),
-            'D' | 'd' => available_chars
-                .iter()
-                .copied()
-                .filter(|c| c.is_ascii_digit())
-                .collect(),
-            'S' | 's' => available_chars
-                .iter()
-                .copied()
-                .filter(|c| !c.is_ascii_alphanumeric())
-                .collect(),
-            _ => Vec::new(),
-        };
-
+        let pool = pattern_pool(symbol, available_chars)?;
         if let Some(c) = choose_char(&pool, &mut rng, last, avoid_repetition) {
             password.push(c);
             last = Some(c);
@@ -236,39 +251,40 @@ fn get_separator(
     }
 }
 
+const PRONOUNCEABLE_VOWELS: &str = "aeiou";
+
 pub async fn generate_pronounceable_password(config: &PasswordGeneratorConfig) -> Result<String> {
     let mut rng = match config.seed {
         Some(seed) => StdRng::seed_from_u64(seed),
         None => StdRng::from_rng(&mut rand::rng()),
     };
-    let mut password = String::with_capacity(config.length);
+    let available = effective_allowed_chars(config)?;
+    let vowels: Vec<char> = available
+        .iter()
+        .copied()
+        .filter(|c| PRONOUNCEABLE_VOWELS.contains(*c))
+        .collect();
+    let consonants: Vec<char> = available
+        .iter()
+        .copied()
+        .filter(|c| c.is_ascii_alphabetic() && !PRONOUNCEABLE_VOWELS.contains(*c))
+        .collect();
 
-    let consonants = "bcdfghjklmnpqrstvwxyz";
-    let vowels = "aeiou";
-
-    if consonants.is_empty() || vowels.is_empty() {
+    if vowels.is_empty() || consonants.is_empty() {
         return Err(PasswordGeneratorError::InvalidConfig(
-            "Cannot generate pronounceable password: character sets are empty.".to_string(),
+            "Cannot generate pronounceable password: allowed characters must include both vowels and consonants.".to_string(),
         ));
     }
 
-    while password.len() < config.length {
-        if password.len() % 2 == 0 {
-            password.push(
-                *consonants
-                    .chars()
-                    .collect::<Vec<char>>()
-                    .choose(&mut rng)
-                    .unwrap(),
-            );
+    let mut password = String::with_capacity(config.length);
+    while password.chars().count() < config.length {
+        let pool = if password.chars().count().is_multiple_of(2) {
+            &consonants
         } else {
-            password.push(
-                *vowels
-                    .chars()
-                    .collect::<Vec<char>>()
-                    .choose(&mut rng)
-                    .unwrap(),
-            );
+            &vowels
+        };
+        if let Some(&c) = pool.choose(&mut rng) {
+            password.push(c);
         }
     }
 
@@ -436,13 +452,14 @@ fn build_salt(service: &str, username: Option<&str>, counter: u32, block_index: 
     }
 }
 
-fn derive_argon2_block(
-    password: &[u8],
-    salt: &[u8],
-    output_len: usize,
-) -> Result<Vec<u8>> {
-    let params = Params::new(ARGON2_M_COST_KIB, ARGON2_T_COST, ARGON2_P_COST, Some(output_len))
-        .map_err(|e| PasswordGeneratorError::KdfError(e.to_string()))?;
+fn derive_argon2_block(password: &[u8], salt: &[u8], output_len: usize) -> Result<Vec<u8>> {
+    let params = Params::new(
+        ARGON2_M_COST_KIB,
+        ARGON2_T_COST,
+        ARGON2_P_COST,
+        Some(output_len),
+    )
+    .map_err(|e| PasswordGeneratorError::KdfError(e.to_string()))?;
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
     let mut output = vec![0u8; output_len];
     argon2
@@ -451,12 +468,7 @@ fn derive_argon2_block(
     Ok(output)
 }
 
-fn append_mapped_chars(
-    bytes: &[u8],
-    alphabet: &[char],
-    target_len: usize,
-    output: &mut String,
-) {
+fn append_mapped_chars(bytes: &[u8], alphabet: &[char], target_len: usize, output: &mut String) {
     let alphabet_len = alphabet.len();
     if alphabet_len == 0 {
         return;
@@ -479,36 +491,50 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_generate_with_pattern_skip_unfulfillable_chars() {
+    fn test_generate_with_pattern_rejects_unfulfillable_symbols() {
         let available_chars: Vec<char> = "abcdefg".chars().collect();
         let pattern = "LDLS";
         let length = 10;
         let seed = None;
 
         let result = generate_with_pattern(pattern, &available_chars, length, seed, false);
-        assert!(
-            result.is_ok(),
-            "Expected successful generation despite unfulfillable pattern"
-        );
+        assert!(result.is_err());
+    }
 
-        let password = result.unwrap();
-        assert_eq!(
-            password.len(),
-            length,
-            "Password should match the requested length"
-        );
+    #[test]
+    fn test_generate_with_pattern_succeeds_when_satisfiable() {
+        let available_chars: Vec<char> = "abc123!".chars().collect();
+        let pattern = "LLDDS";
+        let length = 8;
+        let seed = Some(42);
 
+        let password =
+            generate_with_pattern(pattern, &available_chars, length, seed, false).unwrap();
+        assert_eq!(password.chars().count(), length);
         for c in password.chars() {
-            assert!(
-                available_chars.contains(&c),
-                "Password contains character not in available_chars: {}",
-                c
-            );
+            assert!(available_chars.contains(&c));
         }
-        assert!(
-            !password.chars().any(|c| c.is_ascii_digit()),
-            "Password should not contain digits"
-        );
+    }
+
+    #[tokio::test]
+    async fn test_pronounceable_respects_allowed_chars() {
+        let mut config = PasswordGeneratorConfig::new();
+        config.clear_allowed_chars();
+        config.allowed_chars = "0123456789".chars().collect();
+        config.length = 8;
+        let err = generate_pronounceable_password(&config).await.unwrap_err();
+        assert!(matches!(err, PasswordGeneratorError::InvalidConfig(_)));
+    }
+
+    #[tokio::test]
+    async fn test_pronounceable_uses_allowed_letters_only() {
+        let mut config = PasswordGeneratorConfig::new();
+        config.clear_allowed_chars();
+        config.allowed_chars = "aeib".chars().collect();
+        config.length = 6;
+        config.seed = Some(1);
+        let password = generate_pronounceable_password(&config).await.unwrap();
+        assert!(password.chars().all(|c| "aeib".contains(c)));
     }
 
     #[test]
@@ -579,5 +605,4 @@ mod tests {
         let mutated = mutate_password("äöüß", &config, 0, 3, Some(&MutationType::Swap));
         assert_eq!(mutated.chars().count(), 4);
     }
-
 }
