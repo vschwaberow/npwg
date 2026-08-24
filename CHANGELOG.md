@@ -22,6 +22,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 - Secrets are zeroized after diceware, interactive mutation, and CLI mutation paths.
 - Diceware separator and word selection no longer panic on empty sets.
 - Unknown charset names in `set_allowed_chars` return an error instead of falling back to `allprint`.
+- Diceware mode rejects `--pattern` and `--pronounceable`; CLI flags conflict with `--use-words`.
+- Policy flags apply after other generation options so `--policy` overrides `--use-words`.
+- Interactive passphrase mode errors on invalid separators instead of falling back to space.
+- Password mutation uses the effective allowed character set, honoring include and exclude rules.
+- Clipboard join buffers and daemon stdin secrets are zeroized after copy.
+- Diceware wordlist loading verifies the parsed word count matches the expected 7776 entries.
 - Removed unused dependencies (`chacha20`, `dashmap`, `regex`, `futures`, `rand_distr`).
 - Added CI workflow on push and pull request (fmt, clippy, test).
 ### Changed
