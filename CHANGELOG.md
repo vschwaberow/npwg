@@ -32,6 +32,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 - Mutation insert no longer falls back to the character `a` outside the allowed set.
 - Unknown charset names in `add_allowed_chars` return an error instead of a stderr warning.
 - Strength scoring measures password length in Unicode characters, not UTF-8 bytes.
+- Stats entropy uses Unicode character length, not UTF-8 bytes.
+- `--mutation-type` is optional; omitting it applies random mutations instead of always replacing.
+- `--mutation-type`, `--mutation-strength`, and `--lengthen` require `--mutate`.
+- Library password helpers reject Diceware mode and point callers at the diceware API.
 - Removed unused dependencies (`chacha20`, `dashmap`, `regex`, `futures`, `rand_distr`).
 - Added CI workflow on push and pull request (fmt, clippy, test).
 ### Changed
