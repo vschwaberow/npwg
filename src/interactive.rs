@@ -43,12 +43,22 @@ pub async fn interactive_mode() -> Result<()> {
             .interact_on(&term)
             .map_err(PasswordGeneratorError::DialoguerError)?;
 
-        match selection {
-            0 => generate_interactive_password(&term, &theme).await?,
-            1 => generate_interactive_passphrase(&term, &theme).await?,
-            2 => mutate_interactive_password(&term, &theme).await?,
+        let action_result = match selection {
+            0 => generate_interactive_password(&term, &theme).await,
+            1 => generate_interactive_passphrase(&term, &theme).await,
+            2 => mutate_interactive_password(&term, &theme).await,
             3 => break,
             _ => unreachable!(),
+        };
+
+        if let Err(err) = action_result {
+            eprintln!("{}: {}", "Error".red().bold(), err);
+            let _ = Confirm::with_theme(&theme)
+                .with_prompt("Press Enter to continue")
+                .default(true)
+                .show_default(false)
+                .interact_on(&term);
+            continue;
         }
 
         if !Confirm::with_theme(&theme)
@@ -69,16 +79,25 @@ async fn generate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Re
     let length: u8 = Input::with_theme(theme)
         .with_prompt("Password length")
         .default(16)
+        .validate_with(|input: &u8| {
+            if *input >= 1 {
+                Ok(())
+            } else {
+                Err("Value must be at least 1")
+            }
+        })
         .interact_on(term)?;
 
     let count: u32 = Input::with_theme(theme)
         .with_prompt("Number of passwords")
         .default(1)
-        .interact_on(term)?;
-
-    let avoid_repeating = Confirm::with_theme(theme)
-        .with_prompt("Avoid repeating characters?")
-        .default(false)
+        .validate_with(|input: &u32| {
+            if *input >= 1 {
+                Ok(())
+            } else {
+                Err("Value must be at least 1")
+            }
+        })
         .interact_on(term)?;
 
     let pronounceable = Confirm::with_theme(theme)
@@ -89,14 +108,19 @@ async fn generate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Re
     let mut config = PasswordGeneratorConfig::new();
     config.length = length as usize;
     config.num_passwords = count as usize;
-    config.set_avoid_repeating(avoid_repeating);
     config.pronounceable = pronounceable;
 
     if !pronounceable {
+        let avoid_repeating = Confirm::with_theme(theme)
+            .with_prompt("Avoid repeating characters?")
+            .default(false)
+            .interact_on(term)?;
+        config.set_avoid_repeating(avoid_repeating);
+
         let pattern = Input::with_theme(theme)
             .with_prompt("Enter desired pattern or leave empty for no pattern")
             .default("".to_string())
-            .interact_text()?;
+            .interact_on(term)?;
         if !pattern.is_empty() {
             config.pattern = Some(pattern);
         }
@@ -137,11 +161,25 @@ async fn generate_interactive_passphrase(term: &Term, theme: &ColorfulTheme) -> 
     let count: u32 = Input::with_theme(theme)
         .with_prompt("Number of passphrases")
         .default(1)
+        .validate_with(|input: &u32| {
+            if *input >= 1 {
+                Ok(())
+            } else {
+                Err("Value must be at least 1")
+            }
+        })
         .interact_on(term)?;
 
     let words: u8 = Input::with_theme(theme)
         .with_prompt("Number of words per passphrase")
         .default(6)
+        .validate_with(|input: &u8| {
+            if *input >= 1 {
+                Ok(())
+            } else {
+                Err("Value must be at least 1")
+            }
+        })
         .interact_on(term)?;
 
     let separator: String = Input::with_theme(theme)
@@ -191,6 +229,13 @@ async fn generate_interactive_passphrase(term: &Term, theme: &ColorfulTheme) -> 
 async fn mutate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Result<()> {
     let mut password: String = Input::with_theme(theme)
         .with_prompt("Enter the password to mutate")
+        .validate_with(|input: &String| {
+            if input.is_empty() {
+                Err("Password must not be empty")
+            } else {
+                Ok(())
+            }
+        })
         .interact_on(term)?;
 
     let config = PasswordGeneratorConfig::new();
@@ -213,31 +258,41 @@ async fn mutate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Resu
         .default(1)
         .interact_on(term)?;
 
-    let mutation_types = vec![
+    let mutation_types = [
         MutationType::Replace,
         MutationType::Insert,
         MutationType::Remove,
         MutationType::Swap,
         MutationType::Shift,
     ];
+    let mutation_labels = ["Random", "Replace", "Insert", "Remove", "Swap", "Shift"];
     let mutation_type_index = Select::with_theme(theme)
         .with_prompt("Select mutation type")
-        .items(&mutation_types)
+        .items(mutation_labels)
         .default(0)
         .interact_on(term)?;
-    let mutation_type = &mutation_types[mutation_type_index];
+    let forced_mutation_type = if mutation_type_index == 0 {
+        None
+    } else {
+        Some(&mutation_types[mutation_type_index - 1])
+    };
+    let mutation_type_display = mutation_labels[mutation_type_index];
 
     let mut mutated = mutate_password(
         &password,
         &config,
         lengthen,
         mutation_strength,
-        Some(mutation_type),
+        forced_mutation_type,
     )?;
 
     println!("\n{}", "Mutated Password:".bold().green());
     println!("Original: {}", password.yellow());
-    println!("Mutated:  {} (using {:?})", mutated.green(), mutation_type);
+    println!(
+        "Mutated:  {} (using {})",
+        mutated.green(),
+        mutation_type_display
+    );
 
     if Confirm::with_theme(theme)
         .with_prompt("Show strength meter?")
