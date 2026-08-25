@@ -36,6 +36,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 - `--mutation-type` is optional; omitting it applies random mutations instead of always replacing.
 - `--mutation-type`, `--mutation-strength`, and `--lengthen` require `--mutate`.
 - Library password helpers reject Diceware mode and point callers at the diceware API.
+- Empty passwords are rejected for mutation; blank comma-separated CLI entries are ignored.
+- Interactive mutation strength and stats no longer clone secrets into temporary buffers.
+- Unknown `--allowed` character sets return an error instead of calling `process::exit`.
 - Removed unused dependencies (`chacha20`, `dashmap`, `regex`, `futures`, `rand_distr`).
 - Added CI workflow on push and pull request (fmt, clippy, test).
 ### Changed
