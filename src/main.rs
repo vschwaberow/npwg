@@ -18,7 +18,6 @@ const DAEMONIZE_ARG: &str = "__internal_daemonize";
 const CLIPBOARD_DAEMON_HOLD_SECS: u64 = 45;
 
 use std::io::Write;
-use std::process;
 
 use arboard::Clipboard;
 #[cfg(target_os = "linux")]
@@ -337,15 +336,7 @@ fn build_config(matches: &clap::ArgMatches) -> Result<PasswordGeneratorConfig> {
 
     if matches.value_source("allowed") == Some(ValueSource::CommandLine) {
         let allowed = matches.get_one::<String>("allowed").unwrap();
-        if let Err(error) = apply_allowed_sets(&mut config, allowed) {
-            match error {
-                PasswordGeneratorError::ConfigFile(message) => {
-                    eprintln!("Error: {}", message.red());
-                    process::exit(1);
-                }
-                _ => return Err(error),
-            }
-        }
+        apply_allowed_sets(&mut config, allowed)?;
     }
 
     if matches.get_flag("use-words") {
@@ -558,7 +549,13 @@ async fn handle_mutation(
         .interact_text()?
         .split(',')
         .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
         .collect();
+    if passwords.is_empty() {
+        return Err(PasswordGeneratorError::InvalidConfig(
+            "No passwords provided to mutate.".to_string(),
+        ));
+    }
 
     let lengthen = matches.get_one::<usize>("lengthen").unwrap_or(&0);
 

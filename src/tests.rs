@@ -258,6 +258,13 @@ mod tests {
     }
 
     #[test]
+    fn test_mutate_password_rejects_empty() {
+        let config = PasswordGeneratorConfig::new();
+        let err = mutate_password("", &config, 0, 1, None).unwrap_err();
+        assert!(matches!(err, PasswordGeneratorError::InvalidConfig(_)));
+    }
+
+    #[test]
     fn test_mutate_password_respects_excluded_chars() {
         let mut config = PasswordGeneratorConfig::new();
         config.set_allowed_chars("lowerletter").unwrap();

@@ -338,7 +338,9 @@ pub fn mutate_password(
     forced_mutation_type: Option<&MutationType>,
 ) -> Result<String> {
     if password.is_empty() {
-        return Ok(String::new());
+        return Err(PasswordGeneratorError::InvalidConfig(
+            "Cannot mutate an empty password.".to_string(),
+        ));
     }
 
     let allowed_chars = effective_allowed_chars(config)?;
@@ -641,5 +643,12 @@ mod tests {
         config.seed = Some(7);
         let mutated = mutate_password("äöüß", &config, 0, 3, Some(&MutationType::Swap)).unwrap();
         assert_eq!(mutated.chars().count(), 4);
+    }
+
+    #[test]
+    fn test_mutate_password_rejects_empty_input() {
+        let config = PasswordGeneratorConfig::new();
+        let err = mutate_password("", &config, 0, 1, None).unwrap_err();
+        assert!(matches!(err, PasswordGeneratorError::InvalidConfig(_)));
     }
 }
