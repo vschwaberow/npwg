@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 
 ## [0.5.2]
 ### Fixed
+- Bumped transitive `aws-lc-sys` to 0.44.0 (via `aws-lc-rs`) to clear five Dependabot HIGH advisories.
 - Restored builds against `sha2` 0.11 by encoding digests as hex bytes.
 - Linux clipboard helper no longer passes secrets via environment variables; secrets are delivered on stdin.
 - Diceware wordlists are verified against the pinned EFF large-wordlist SHA-256 instead of trust-on-first-use.
