@@ -63,7 +63,7 @@ npwg [OPTIONS]
 - `--separator <SEPARATOR>`: Sets the separator for diceware passphrases (single character or 'random')
 - `--pronounceable`: Generate pronounceable passwords from allowed vowels and consonants
 - `--mutate`: Mutate the passwords (`--copy` copies the mutated results)
-- `--mutation-type <TYPE>`: Type of mutation to apply [default: replace]
+- `--mutation-type <TYPE>`: Type of mutation to apply (omit for random)
 - `--mutation-strength <STRENGTH>`: Strength of mutation [default: 1]
 - `--lengthen <INCREASE>`: Increase the length of passwords during mutation
 - `-s, --seed <SEED>`: Seed the RNG for reproducible output (testing only; insecure for real secrets)

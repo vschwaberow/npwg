@@ -203,23 +203,25 @@ fn build_cli() -> Command {
         .arg(
             Arg::new("mutation_type")
                 .long("mutation-type")
-                .help("Type of mutation to apply")
+                .help("Type of mutation to apply (omit for random)")
                 .value_parser(value_parser!(MutationType))
-                .default_value("replace"),
+                .requires("mutate"),
         )
         .arg(
             Arg::new("mutation_strength")
                 .long("mutation-strength")
                 .help("Strength of mutation")
                 .default_value("1")
-                .value_parser(value_parser!(u32)),
+                .value_parser(value_parser!(u32))
+                .requires("mutate"),
         )
         .arg(
             Arg::new("lengthen")
                 .long("lengthen")
                 .value_name("INCREASE")
                 .help("Increase the length of passwords during mutation")
-                .value_parser(value_parser!(usize)),
+                .value_parser(value_parser!(usize))
+                .requires("mutate"),
         )
         .arg(
             Arg::new("copy")
@@ -560,7 +562,12 @@ async fn handle_mutation(
 
     let lengthen = matches.get_one::<usize>("lengthen").unwrap_or(&0);
 
-    let cli_mutation_type_arg = matches.get_one::<MutationType>("mutation_type");
+    let cli_mutation_type_arg =
+        if matches.value_source("mutation_type") == Some(ValueSource::CommandLine) {
+            matches.get_one::<MutationType>("mutation_type")
+        } else {
+            None
+        };
 
     let mutation_strength = matches.get_one::<u32>("mutation_strength").unwrap_or(&1);
 
@@ -944,6 +951,41 @@ mod cli_tests {
             .unwrap();
         let config = build_config(&matches).unwrap();
         assert!(matches!(config.mode, PasswordGeneratorMode::Password));
+    }
+
+    #[test]
+    fn test_cli_mutation_type_defaults_to_random() {
+        let matches = build_cli()
+            .try_get_matches_from(["npwg", "--mutate"])
+            .unwrap();
+        assert_ne!(
+            matches.value_source("mutation_type"),
+            Some(ValueSource::CommandLine)
+        );
+    }
+
+    #[test]
+    fn test_cli_mutation_type_from_command_line() {
+        let matches = build_cli()
+            .try_get_matches_from(["npwg", "--mutate", "--mutation-type", "swap"])
+            .unwrap();
+        assert_eq!(
+            matches.value_source("mutation_type"),
+            Some(ValueSource::CommandLine)
+        );
+        assert_eq!(
+            matches
+                .get_one::<MutationType>("mutation_type")
+                .map(|t| t.to_string())
+                .as_deref(),
+            Some("swap")
+        );
+    }
+
+    #[test]
+    fn test_cli_lengthen_requires_mutate() {
+        let result = build_cli().try_get_matches_from(["npwg", "--lengthen", "3"]);
+        assert!(result.is_err());
     }
 
     #[test]
