@@ -60,8 +60,12 @@ npwg [OPTIONS]
 - `-a, --allowed <CHARS>`: Sets the allowed characters [default: allprint]
 - `--use-words`: Use diceware words instead of characters (EFF large wordlist, SHA-256 pinned)
 - `-i, --interactive`: Start interactive console mode
+- `--config <PATH>`: Path to a configuration file with defaults and profiles
+- `--profile <NAME>`: Name of a profile from the configuration file
+- `--policy <POLICY>`: Apply a built-in password policy (`windows-ad`, `pci-dss`, `nist-high`)
 - `--separator <SEPARATOR>`: Sets the separator for diceware passphrases (single character or 'random')
 - `--pronounceable`: Generate pronounceable passwords from allowed vowels and consonants
+- `-p, --pattern <PATTERN>`: Pattern template (`L`=letter, `D`=digit, `S`=symbol; e.g. `LLDDS`)
 - `--mutate`: Mutate the passwords (`--copy` copies the mutated results)
 - `--mutation-type <TYPE>`: Type of mutation to apply (omit for random)
 - `--mutation-strength <STRENGTH>`: Strength of mutation [default: 1]
@@ -152,7 +156,7 @@ npwg --pattern LLDDS --length 16
 
 #### Mutation Workflow
 
-Tweak existing passwords by applying deterministic mutations and optional lengthening:
+Tweak existing passwords with mutations (omit `--mutation-type` for random) and optional lengthening:
 
 ```sh
 npwg --mutate --mutation-type swap --mutation-strength 2 --lengthen 3
@@ -172,7 +176,7 @@ Include an optional username and counter to create distinct variants:
 npwg --deterministic --service example.com --username alice --counter 2 --length 24
 ```
 
-Use interactive mode for guided generation and mutation prompts:
+Use interactive mode for guided password, passphrase, and mutation prompts. Pattern prompts use `L`/`D`/`S` templates (not literal strings); charset, policy, and profile stay on the CLI:
 
 ```sh
 npwg --interactive
