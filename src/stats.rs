@@ -11,10 +11,10 @@ pub struct PasswordQuality {
     pub kurtosis: f64,
 }
 
-pub fn show_stats(passwords: &[String]) -> PasswordQuality {
+pub fn show_stats<S: AsRef<str>>(passwords: &[S]) -> PasswordQuality {
     let entropies: Vec<f64> = passwords
         .iter()
-        .map(|s| calculate_entropy(s.as_str()))
+        .map(|s| calculate_entropy(s.as_ref()))
         .collect();
     let n = entropies.len() as f64;
 

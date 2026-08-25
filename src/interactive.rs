@@ -243,7 +243,7 @@ async fn mutate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Resu
         .default(true)
         .interact_on(term)?
     {
-        print_strength_meter(&[password.clone(), mutated.clone()]);
+        print_strength_meter(&[&password, &mutated]);
     }
 
     if Confirm::with_theme(theme)
@@ -251,7 +251,7 @@ async fn mutate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Resu
         .default(false)
         .interact_on(term)?
     {
-        print_stats(&[password.clone(), mutated.clone()]);
+        print_stats(&[&password, &mutated]);
     }
 
     password.zeroize();
@@ -259,9 +259,10 @@ async fn mutate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Resu
     Ok(())
 }
 
-fn print_strength_meter(data: &[String]) {
+fn print_strength_meter<S: AsRef<str>>(data: &[S]) {
     println!("\n{}", "Password Strength:".blue().bold());
     for (i, password) in data.iter().enumerate() {
+        let password = password.as_ref();
         let strength = evaluate_password_strength(password);
         let feedback = get_strength_feedback(strength);
         let strength_bar = get_strength_bar(strength);
@@ -293,7 +294,7 @@ fn print_strength_meter(data: &[String]) {
     }
 }
 
-fn print_stats(data: &[String]) {
+fn print_stats<S: AsRef<str>>(data: &[S]) {
     let pq = show_stats(data);
     println!("\n{}", "Statistics:".blue().bold());
     println!("Mean: {:.6}", pq.mean.to_string().yellow());
