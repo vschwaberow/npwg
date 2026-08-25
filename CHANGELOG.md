@@ -28,6 +28,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 - Password mutation uses the effective allowed character set, honoring include and exclude rules.
 - Clipboard join buffers and daemon stdin secrets are zeroized after copy.
 - Diceware wordlist loading verifies the parsed word count matches the expected 7776 entries.
+- All password policies clear pattern and pronounceable overrides.
+- Mutation insert no longer falls back to the character `a` outside the allowed set.
+- Unknown charset names in `add_allowed_chars` return an error instead of a stderr warning.
+- Strength scoring measures password length in Unicode characters, not UTF-8 bytes.
 - Removed unused dependencies (`chacha20`, `dashmap`, `regex`, `futures`, `rand_distr`).
 - Added CI workflow on push and pull request (fmt, clippy, test).
 ### Changed
