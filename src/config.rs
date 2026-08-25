@@ -102,14 +102,15 @@ impl PasswordGeneratorConfig {
         }
     }
 
-    pub fn add_allowed_chars(&mut self, charset_name: &str) {
+    pub fn add_allowed_chars(&mut self, charset_name: &str) -> Result<()> {
         if let Some((_, chars)) = DEFINE.iter().find(|(name, _)| *name == charset_name) {
             self.allowed_chars.extend(chars.chars());
+            Ok(())
         } else {
-            eprintln!(
-                "Warning: Unknown character set '{}' was ignored in add_allowed_chars.",
+            Err(PasswordGeneratorError::InvalidConfig(format!(
+                "Unknown character set '{}'",
                 charset_name
-            );
+            )))
         }
     }
 
@@ -247,13 +248,13 @@ mod tests {
         config.clear_allowed_chars();
         assert!(config.allowed_chars.is_empty());
 
-        config.add_allowed_chars("lowerletter");
+        config.add_allowed_chars("lowerletter").unwrap();
         assert_eq!(
             config.allowed_chars.iter().collect::<String>(),
             "abcdefghijklmnopqrstuvwxyz"
         );
 
-        config.add_allowed_chars("upperletter");
+        config.add_allowed_chars("upperletter").unwrap();
         assert_eq!(
             {
                 let mut chars: Vec<char> = config.allowed_chars.iter().cloned().collect();
@@ -270,10 +271,10 @@ mod tests {
         );
 
         let before_invalid = config.allowed_chars.clone();
-        config.add_allowed_chars("invalid_charset");
+        assert!(config.add_allowed_chars("invalid_charset").is_err());
         assert_eq!(config.allowed_chars, before_invalid);
 
-        config.add_allowed_chars("");
+        assert!(config.add_allowed_chars("").is_err());
         assert_eq!(config.allowed_chars, before_invalid);
     }
 }
