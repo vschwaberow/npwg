@@ -42,6 +42,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 - Interactive inputs reject zero length, count, and word values early.
 - Interactive mutation rejects empty passwords immediately and offers a random mutation type.
 - Interactive action errors return to the menu instead of exiting the session.
+- Interactive pattern prompt explains L/D/S templates and rejects literal strings early.
 - Interactive mutation strength and stats no longer clone secrets into temporary buffers.
 - Unknown `--allowed` character sets return an error instead of calling `process::exit`.
 - Removed unused dependencies (`chacha20`, `dashmap`, `regex`, `futures`, `rand_distr`).

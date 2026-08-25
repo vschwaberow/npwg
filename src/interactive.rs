@@ -54,9 +54,8 @@ pub async fn interactive_mode() -> Result<()> {
         if let Err(err) = action_result {
             eprintln!("{}: {}", "Error".red().bold(), err);
             let _ = Confirm::with_theme(&theme)
-                .with_prompt("Press Enter to continue")
+                .with_prompt("Continue?")
                 .default(true)
-                .show_default(false)
                 .interact_on(&term);
             continue;
         }
@@ -118,8 +117,9 @@ async fn generate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Re
         config.set_avoid_repeating(avoid_repeating);
 
         let pattern = Input::with_theme(theme)
-            .with_prompt("Enter desired pattern or leave empty for no pattern")
+            .with_prompt("Pattern (L=letter, D=digit, S=symbol; e.g. LLDDS) or leave empty")
             .default("".to_string())
+            .validate_with(|input: &String| validate_pattern_template(input))
             .interact_on(term)?;
         if !pattern.is_empty() {
             config.pattern = Some(pattern);
@@ -313,6 +313,20 @@ async fn mutate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Resu
     password.zeroize();
     mutated.zeroize();
     Ok(())
+}
+
+fn validate_pattern_template(pattern: &str) -> std::result::Result<(), &'static str> {
+    if pattern.is_empty() {
+        return Ok(());
+    }
+    if pattern
+        .chars()
+        .all(|c| matches!(c, 'L' | 'l' | 'D' | 'd' | 'S' | 's'))
+    {
+        Ok(())
+    } else {
+        Err("Use only L, D, or S (e.g. LLDDS). Not a literal password.")
+    }
 }
 
 fn print_strength_meter<S: AsRef<str>>(data: &[S]) {
