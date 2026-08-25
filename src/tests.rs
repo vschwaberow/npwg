@@ -5,6 +5,7 @@
 // Copyright (c) 2022 Volker Schwaberow
 
 #[cfg(test)]
+#[allow(clippy::module_inception)]
 mod tests {
     use crate::config::PasswordGeneratorConfig;
     use crate::error::PasswordGeneratorError;
@@ -201,9 +202,7 @@ mod tests {
 
         if let Err(err) = result {
             match err {
-                PasswordGeneratorError::InvalidConfig(_) => {
-                    assert!(true);
-                }
+                PasswordGeneratorError::InvalidConfig(_) => {}
                 _ => {
                     panic!("Expected InvalidConfig error, got {:?}", err);
                 }
@@ -224,9 +223,7 @@ mod tests {
 
         if let Err(err) = result {
             match err {
-                PasswordGeneratorError::InvalidConfig(_) => {
-                    assert!(true);
-                }
+                PasswordGeneratorError::InvalidConfig(_) => {}
                 _ => {
                     panic!("Expected InvalidConfig error, got {:?}", err);
                 }

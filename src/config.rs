@@ -257,7 +257,7 @@ mod tests {
         config.add_allowed_chars("upperletter").unwrap();
         assert_eq!(
             {
-                let mut chars: Vec<char> = config.allowed_chars.iter().cloned().collect();
+                let mut chars: Vec<char> = config.allowed_chars.to_vec();
                 chars.sort_unstable();
                 chars.into_iter().collect::<String>()
             },

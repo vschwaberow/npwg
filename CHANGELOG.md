@@ -48,6 +48,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 - Removed unused dependencies (`chacha20`, `dashmap`, `regex`, `futures`, `rand_distr`).
 - Added CI workflow on push and pull request (fmt, clippy, test).
 ### Changed
+- Interactive and CLI share strength-meter and stats printers; interactive uses validators and a post-generate helper.
+- Interactive menu selection uses named actions instead of magic indices.
 - Release workflow uploads Linux, Windows, and macOS binaries in a single published release.
 - `--seed` help text and a stderr warning clarify that seeded output is insecure for real secrets.
 - `--strength` output is documented as a local heuristic estimate, not NIST or zxcvbn compliance.

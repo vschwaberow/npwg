@@ -4,6 +4,8 @@
 // Author: Volker Schwaberow <volker@schwaberow.de>
 // Copyright (c) 2022 Volker Schwaberow
 
+use colored::Colorize;
+
 pub struct PasswordQuality {
     pub mean: f64,
     pub variance: f64,
@@ -64,6 +66,15 @@ fn calculate_entropy(password: &str) -> f64 {
         let p = count as f64 / length;
         acc - p * p.log2()
     })
+}
+
+pub fn print_stats<S: AsRef<str>>(data: &[S]) {
+    let pq = show_stats(data);
+    println!("\n{}", "Statistics:".blue().bold());
+    println!("Mean: {:.6}", pq.mean.to_string().yellow());
+    println!("Variance: {:.6}", pq.variance.to_string().yellow());
+    println!("Skewness: {:.6}", pq.skewness.to_string().yellow());
+    println!("Kurtosis: {:.6}", pq.kurtosis.to_string().yellow());
 }
 
 #[cfg(test)]

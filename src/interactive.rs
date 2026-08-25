@@ -12,15 +12,26 @@ use crate::generator::{
     mutate_password, MutationType,
 };
 use crate::profile::parse_separator;
-use crate::stats::show_stats;
-use crate::strength::{
-    evaluate_password_strength, get_improvement_suggestions, get_strength_bar,
-    get_strength_feedback,
-};
+use crate::stats::print_stats;
+use crate::strength::print_strength_meter;
 use colored::Colorize;
 use console::Term;
 use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
 use zeroize::Zeroize;
+
+enum MenuAction {
+    Password,
+    Passphrase,
+    Mutate,
+    Exit,
+}
+
+const MENU_LABELS: [&str; 4] = [
+    "Generate Password",
+    "Generate Passphrase",
+    "Mutate Password",
+    "Exit",
+];
 
 pub async fn interactive_mode() -> Result<()> {
     let term = Term::stdout();
@@ -30,43 +41,49 @@ pub async fn interactive_mode() -> Result<()> {
         term.clear_screen()?;
         println!("{}", "Welcome to NPWG Interactive Mode!".bold().cyan());
 
-        let options = vec![
-            "Generate Password",
-            "Generate Passphrase",
-            "Mutate Password",
-            "Exit",
-        ];
         let selection = Select::with_theme(&theme)
             .with_prompt("What would you like to do?")
-            .items(&options)
+            .items(MENU_LABELS)
             .default(0)
             .interact_on(&term)
             .map_err(PasswordGeneratorError::DialoguerError)?;
 
-        let action_result = match selection {
-            0 => generate_interactive_password(&term, &theme).await,
-            1 => generate_interactive_passphrase(&term, &theme).await,
-            2 => mutate_interactive_password(&term, &theme).await,
-            3 => break,
+        let action = match selection {
+            0 => MenuAction::Password,
+            1 => MenuAction::Passphrase,
+            2 => MenuAction::Mutate,
+            3 => MenuAction::Exit,
             _ => unreachable!(),
         };
 
-        if let Err(err) = action_result {
-            eprintln!("{}: {}", "Error".red().bold(), err);
-            let _ = Confirm::with_theme(&theme)
-                .with_prompt("Continue?")
-                .default(true)
-                .interact_on(&term);
-            continue;
-        }
+        match action {
+            MenuAction::Exit => break,
+            other => {
+                let action_result = match other {
+                    MenuAction::Password => generate_interactive_password(&term, &theme).await,
+                    MenuAction::Passphrase => generate_interactive_passphrase(&term, &theme).await,
+                    MenuAction::Mutate => mutate_interactive_password(&term, &theme).await,
+                    MenuAction::Exit => unreachable!(),
+                };
 
-        if !Confirm::with_theme(&theme)
-            .with_prompt("Do you want to perform another action?")
-            .default(true)
-            .interact_on(&term)
-            .map_err(PasswordGeneratorError::DialoguerError)?
-        {
-            break;
+                if let Err(err) = action_result {
+                    eprintln!("{}: {}", "Error".red().bold(), err);
+                    let _ = Confirm::with_theme(&theme)
+                        .with_prompt("Continue?")
+                        .default(true)
+                        .interact_on(&term);
+                    continue;
+                }
+
+                if !Confirm::with_theme(&theme)
+                    .with_prompt("Do you want to perform another action?")
+                    .default(true)
+                    .interact_on(&term)
+                    .map_err(PasswordGeneratorError::DialoguerError)?
+                {
+                    break;
+                }
+            }
         }
     }
 
@@ -78,25 +95,13 @@ async fn generate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Re
     let length: u8 = Input::with_theme(theme)
         .with_prompt("Password length")
         .default(16)
-        .validate_with(|input: &u8| {
-            if *input >= 1 {
-                Ok(())
-            } else {
-                Err("Value must be at least 1")
-            }
-        })
+        .validate_with(at_least_one_u8)
         .interact_on(term)?;
 
     let count: u32 = Input::with_theme(theme)
         .with_prompt("Number of passwords")
         .default(1)
-        .validate_with(|input: &u32| {
-            if *input >= 1 {
-                Ok(())
-            } else {
-                Err("Value must be at least 1")
-            }
-        })
+        .validate_with(at_least_one_u32)
         .interact_on(term)?;
 
     let pronounceable = Confirm::with_theme(theme)
@@ -128,32 +133,13 @@ async fn generate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Re
 
     config.validate()?;
 
-    let passwords = if pronounceable {
+    let mut passwords = if pronounceable {
         generate_pronounceable_passwords(&config).await?
     } else {
         generate_passwords(&config).await?
     };
 
-    println!("\n{}", "Generated Passwords:".bold().green());
-    passwords.iter().for_each(|p| println!("{}", p.yellow()));
-
-    if Confirm::with_theme(theme)
-        .with_prompt("Show strength meter?")
-        .default(true)
-        .interact_on(term)?
-    {
-        print_strength_meter(&passwords);
-    }
-
-    if Confirm::with_theme(theme)
-        .with_prompt("Show statistics?")
-        .default(false)
-        .interact_on(term)?
-    {
-        print_stats(&passwords);
-    }
-
-    passwords.into_iter().for_each(|mut p| p.zeroize());
+    finish_generated_secrets(term, theme, "Generated Passwords:", &mut passwords)?;
     Ok(())
 }
 
@@ -161,25 +147,13 @@ async fn generate_interactive_passphrase(term: &Term, theme: &ColorfulTheme) -> 
     let count: u32 = Input::with_theme(theme)
         .with_prompt("Number of passphrases")
         .default(1)
-        .validate_with(|input: &u32| {
-            if *input >= 1 {
-                Ok(())
-            } else {
-                Err("Value must be at least 1")
-            }
-        })
+        .validate_with(at_least_one_u32)
         .interact_on(term)?;
 
     let words: u8 = Input::with_theme(theme)
         .with_prompt("Number of words per passphrase")
         .default(6)
-        .validate_with(|input: &u8| {
-            if *input >= 1 {
-                Ok(())
-            } else {
-                Err("Value must be at least 1")
-            }
-        })
+        .validate_with(at_least_one_u8)
         .interact_on(term)?;
 
     let separator: String = Input::with_theme(theme)
@@ -202,27 +176,8 @@ async fn generate_interactive_passphrase(term: &Term, theme: &ColorfulTheme) -> 
 
     config.validate()?;
 
-    let passphrases = generate_diceware_passphrase(&wordlist, &config).await?;
-    println!("\n{}", "Generated Passphrases:".bold().green());
-    passphrases.iter().for_each(|p| println!("{}", p.yellow()));
-
-    if Confirm::with_theme(theme)
-        .with_prompt("Show strength meter?")
-        .default(true)
-        .interact_on(term)?
-    {
-        print_strength_meter(&passphrases);
-    }
-
-    if Confirm::with_theme(theme)
-        .with_prompt("Show statistics?")
-        .default(false)
-        .interact_on(term)?
-    {
-        print_stats(&passphrases);
-    }
-
-    passphrases.into_iter().for_each(|mut p| p.zeroize());
+    let mut passphrases = generate_diceware_passphrase(&wordlist, &config).await?;
+    finish_generated_secrets(term, theme, "Generated Passphrases:", &mut passphrases)?;
     Ok(())
 }
 
@@ -249,7 +204,7 @@ async fn mutate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Resu
     let mutation_strength: u32 = Input::with_theme(theme)
         .with_prompt("Enter mutation strength (1-10)")
         .validate_with(|input: &u32| {
-            if *input >= 1 && *input <= 10 {
+            if (1..=10).contains(input) {
                 Ok(())
             } else {
                 Err("Please enter a number between 1 and 10")
@@ -299,7 +254,7 @@ async fn mutate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Resu
         .default(true)
         .interact_on(term)?
     {
-        print_strength_meter(&[&password, &mutated]);
+        print_strength_meter(&[&password, &mutated], true);
     }
 
     if Confirm::with_theme(theme)
@@ -315,6 +270,51 @@ async fn mutate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Resu
     Ok(())
 }
 
+fn finish_generated_secrets(
+    term: &Term,
+    theme: &ColorfulTheme,
+    title: &str,
+    secrets: &mut [String],
+) -> Result<()> {
+    println!("\n{}", title.bold().green());
+    secrets.iter().for_each(|p| println!("{}", p.yellow()));
+
+    if Confirm::with_theme(theme)
+        .with_prompt("Show strength meter?")
+        .default(true)
+        .interact_on(term)?
+    {
+        print_strength_meter(secrets, true);
+    }
+
+    if Confirm::with_theme(theme)
+        .with_prompt("Show statistics?")
+        .default(false)
+        .interact_on(term)?
+    {
+        print_stats(secrets);
+    }
+
+    secrets.iter_mut().for_each(|p| p.zeroize());
+    Ok(())
+}
+
+fn at_least_one_u8(value: &u8) -> std::result::Result<(), &'static str> {
+    if *value >= 1 {
+        Ok(())
+    } else {
+        Err("Value must be at least 1")
+    }
+}
+
+fn at_least_one_u32(value: &u32) -> std::result::Result<(), &'static str> {
+    if *value >= 1 {
+        Ok(())
+    } else {
+        Err("Value must be at least 1")
+    }
+}
+
 fn validate_pattern_template(pattern: &str) -> std::result::Result<(), &'static str> {
     if pattern.is_empty() {
         return Ok(());
@@ -327,48 +327,4 @@ fn validate_pattern_template(pattern: &str) -> std::result::Result<(), &'static 
     } else {
         Err("Use only L, D, or S (e.g. LLDDS). Not a literal password.")
     }
-}
-
-fn print_strength_meter<S: AsRef<str>>(data: &[S]) {
-    println!("\n{}", "Password Strength:".blue().bold());
-    for (i, password) in data.iter().enumerate() {
-        let password = password.as_ref();
-        let strength = evaluate_password_strength(password);
-        let feedback = get_strength_feedback(strength);
-        let strength_bar = get_strength_bar(strength);
-        println!(
-            "Password {}: {} {:.2} {} {}",
-            i + 1,
-            strength_bar,
-            strength,
-            feedback.color(match &*feedback {
-                "Very Weak" => "red",
-                "Weak" => "yellow",
-                "Moderate" => "blue",
-                "Strong" => "green",
-                "Very Strong" => "bright green",
-                _ => "white",
-            }),
-            password.yellow()
-        );
-
-        if strength < 0.6 {
-            let suggestions = get_improvement_suggestions(password);
-            if !suggestions.is_empty() {
-                println!("  {}:", "Improvement suggestions".cyan());
-                for suggestion in suggestions {
-                    println!("   • {}", suggestion);
-                }
-            }
-        }
-    }
-}
-
-fn print_stats<S: AsRef<str>>(data: &[S]) {
-    let pq = show_stats(data);
-    println!("\n{}", "Statistics:".blue().bold());
-    println!("Mean: {:.6}", pq.mean.to_string().yellow());
-    println!("Variance: {:.6}", pq.variance.to_string().yellow());
-    println!("Skewness: {:.6}", pq.skewness.to_string().yellow());
-    println!("Kurtosis: {:.6}", pq.kurtosis.to_string().yellow());
 }

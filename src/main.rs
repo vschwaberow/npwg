@@ -34,11 +34,8 @@ use generator::{
 use policy::{apply_policy, PolicyName};
 use profile::{apply_allowed_sets, apply_profile, load_user_profiles, parse_separator};
 use qrcodegen::{QrCode, QrCodeEcc};
-use stats::show_stats;
-use strength::{
-    evaluate_password_strength, get_improvement_suggestions, get_strength_bar,
-    get_strength_feedback,
-};
+use stats::print_stats;
+use strength::print_strength_meter;
 use zeroize::{Zeroize, Zeroizing};
 
 impl From<arboard::Error> for PasswordGeneratorError {
@@ -795,54 +792,6 @@ where
     setter(text)
 }
 
-fn print_strength_meter(data: &[String], show_password: bool) {
-    println!("\n{}", "Password Strength:".blue().bold());
-    for (i, password) in data.iter().enumerate() {
-        let strength = evaluate_password_strength(password);
-        let feedback = get_strength_feedback(strength);
-        let strength_bar = get_strength_bar(strength);
-        let password_display = if show_password {
-            password.yellow().to_string()
-        } else {
-            "(hidden)".dimmed().to_string()
-        };
-        println!(
-            "Password {}: {} {:.2} {} {}",
-            i + 1,
-            strength_bar,
-            strength,
-            feedback.color(match &*feedback {
-                "Very Weak" => "red",
-                "Weak" => "yellow",
-                "Moderate" => "blue",
-                "Strong" => "green",
-                "Very Strong" => "bright green",
-                _ => "white",
-            }),
-            password_display
-        );
-
-        if strength < 0.6 {
-            let suggestions = get_improvement_suggestions(password);
-            if !suggestions.is_empty() {
-                println!("  {}:", "Improvement suggestions".cyan());
-                for suggestion in suggestions {
-                    println!("   • {}", suggestion);
-                }
-            }
-        }
-    }
-}
-
-fn print_stats(data: &[String]) {
-    let pq = show_stats(data);
-    println!("\n{}", "Statistics:".blue().bold());
-    println!("Mean: {:.6}", pq.mean.to_string().yellow());
-    println!("Variance: {:.6}", pq.variance.to_string().yellow());
-    println!("Skewness: {:.6}", pq.skewness.to_string().yellow());
-    println!("Kurtosis: {:.6}", pq.kurtosis.to_string().yellow());
-}
-
 #[cfg(test)]
 mod cli_tests {
     use super::*;
@@ -923,8 +872,8 @@ mod cli_tests {
         let config = build_config(&matches).unwrap();
         assert_eq!(config.length, 20);
         assert_eq!(config.num_passwords, 4);
-        assert!(matches.get_flag("use-words") == false);
-        assert!(matches.get_flag("pronounceable") == false);
+        assert!(!matches.get_flag("use-words"));
+        assert!(!matches.get_flag("pronounceable"));
         assert!(matches.value_source("allowed") == Some(ValueSource::DefaultValue));
         assert_eq!(config.allowed_chars.len(), 26);
         assert!(matches!(config.mode, PasswordGeneratorMode::Diceware));

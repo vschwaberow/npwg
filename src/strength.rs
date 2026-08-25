@@ -4,6 +4,7 @@
 // Author: Volker Schwaberow <volker@schwaberow.de>
 // Copyright (c) 2022 Volker Schwaberow
 
+use colored::Colorize;
 use std::collections::{HashMap, HashSet};
 use std::f64;
 
@@ -575,4 +576,44 @@ pub fn get_strength_bar(score: f64) -> String {
     let empty = "░".repeat(empty_length);
 
     format!("[{}{}]", filled, empty)
+}
+
+pub fn print_strength_meter<S: AsRef<str>>(data: &[S], show_password: bool) {
+    println!("\n{}", "Password Strength:".blue().bold());
+    for (i, password) in data.iter().enumerate() {
+        let password = password.as_ref();
+        let strength = evaluate_password_strength(password);
+        let feedback = get_strength_feedback(strength);
+        let strength_bar = get_strength_bar(strength);
+        let password_display = if show_password {
+            password.yellow().to_string()
+        } else {
+            "(hidden)".dimmed().to_string()
+        };
+        println!(
+            "Password {}: {} {:.2} {} {}",
+            i + 1,
+            strength_bar,
+            strength,
+            feedback.color(match &*feedback {
+                "Very Weak" => "red",
+                "Weak" => "yellow",
+                "Moderate" => "blue",
+                "Strong" => "green",
+                "Very Strong" => "bright green",
+                _ => "white",
+            }),
+            password_display
+        );
+
+        if strength < 0.6 {
+            let suggestions = get_improvement_suggestions(password);
+            if !suggestions.is_empty() {
+                println!("  {}:", "Improvement suggestions".cyan());
+                for suggestion in suggestions {
+                    println!("   • {}", suggestion);
+                }
+            }
+        }
+    }
 }
