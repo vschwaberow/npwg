@@ -42,6 +42,12 @@ fn ensure_length(config: &mut PasswordGeneratorConfig, minimum: usize) {
     }
 }
 
+fn clear_generation_overrides(config: &mut PasswordGeneratorConfig) {
+    config.pattern = None;
+    config.pronounceable = false;
+    config.mode = crate::config::PasswordGeneratorMode::Password;
+}
+
 fn ensure_separator(config: &mut PasswordGeneratorConfig) {
     if config.mode == crate::config::PasswordGeneratorMode::Diceware && config.separator.is_none() {
         config.separator = Some(Separator::Fixed(' '));
@@ -52,9 +58,7 @@ fn apply_windows_ad(config: &mut PasswordGeneratorConfig) -> Result<PolicyDetail
     ensure_length(config, 14);
     apply_allowed_sets(config, "upperletter,lowerletter,digit,symbol2")?;
     config.set_avoid_repeating(false);
-    config.pattern = None;
-    config.pronounceable = false;
-    config.mode = crate::config::PasswordGeneratorMode::Password;
+    clear_generation_overrides(config);
     ensure_separator(config);
     Ok(PolicyDetails {
         label: "Windows Active Directory",
@@ -68,7 +72,7 @@ fn apply_pci_dss(config: &mut PasswordGeneratorConfig) -> Result<PolicyDetails> 
     ensure_length(config, 12);
     apply_allowed_sets(config, "upperletter,lowerletter,digit,symbol2")?;
     config.set_avoid_repeating(false);
-    config.mode = crate::config::PasswordGeneratorMode::Password;
+    clear_generation_overrides(config);
     ensure_separator(config);
     Ok(PolicyDetails {
         label: "PCI DSS",
@@ -82,7 +86,7 @@ fn apply_nist_high(config: &mut PasswordGeneratorConfig) -> Result<PolicyDetails
     ensure_length(config, 16);
     apply_allowed_sets(config, "upperletter,lowerletter,digit,symbol2")?;
     config.set_avoid_repeating(true);
-    config.mode = crate::config::PasswordGeneratorMode::Password;
+    clear_generation_overrides(config);
     ensure_separator(config);
     Ok(PolicyDetails {
         label: "NIST SP 800-63B High",
@@ -117,5 +121,25 @@ mod tests {
         let details = apply_policy(PolicyName::NistHigh, &mut config).unwrap();
         assert_eq!(details.recommended_entropy_bits as u32, 96);
         assert!(config.length >= 16);
+    }
+
+    #[test]
+    fn policies_clear_pattern_and_pronounceable() {
+        for policy in [
+            PolicyName::WindowsAd,
+            PolicyName::PciDss,
+            PolicyName::NistHigh,
+        ] {
+            let mut config = PasswordGeneratorConfig::new();
+            config.pattern = Some("LLDDS".to_string());
+            config.pronounceable = true;
+            apply_policy(policy, &mut config).unwrap();
+            assert!(config.pattern.is_none());
+            assert!(!config.pronounceable);
+            assert!(matches!(
+                config.mode,
+                crate::config::PasswordGeneratorMode::Password
+            ));
+        }
     }
 }
