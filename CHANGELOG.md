@@ -4,6 +4,59 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2]
+### Fixed
+- Bumped transitive `aws-lc-sys` to 0.44.0 (via `aws-lc-rs`) to clear five Dependabot HIGH advisories.
+- Restored builds against `sha2` 0.11 by encoding digests as hex bytes.
+- Linux clipboard helper no longer passes secrets via environment variables; secrets are delivered on stdin.
+- Diceware wordlists are verified against the pinned EFF large-wordlist SHA-256 instead of trust-on-first-use.
+- Diceware wordlists load immediately after the first download; no second run required.
+- `--mutate --copy` copies mutated passwords; strength and stats use the mutated values.
+- Password mutation indexes characters instead of UTF-8 bytes, avoiding panics on non-ASCII input.
+- `--avoid-repeating` again prevents consecutive duplicate characters when alternatives exist.
+- Pattern mode returns an error when a template symbol cannot be satisfied by the allowed character set.
+- Pattern mode errors when the template exceeds `--length` or cannot fill to the requested length.
+- Combining `--pattern` and `--pronounceable` is rejected instead of silently ignoring the pattern.
+- Pronounceable mode draws vowels and consonants only from the configured allowed characters.
+- Linux clipboard helper exits after 45 seconds and clears the clipboard instead of running forever.
+- Interactive passphrase mode prompts for words per passphrase and parses separators like the CLI.
+- Secrets are zeroized after diceware, interactive mutation, and CLI mutation paths.
+- Diceware separator and word selection no longer panic on empty sets.
+- Unknown charset names in `set_allowed_chars` return an error instead of falling back to `allprint`.
+- Diceware mode rejects `--pattern` and `--pronounceable`; CLI flags conflict with `--use-words`.
+- Policy flags apply after other generation options so `--policy` overrides `--use-words`.
+- Interactive passphrase mode errors on invalid separators instead of falling back to space.
+- Password mutation uses the effective allowed character set, honoring include and exclude rules.
+- Clipboard join buffers and daemon stdin secrets are zeroized after copy.
+- Diceware wordlist loading verifies the parsed word count matches the expected 7776 entries.
+- All password policies clear pattern and pronounceable overrides.
+- Mutation insert no longer falls back to the character `a` outside the allowed set.
+- Unknown charset names in `add_allowed_chars` return an error instead of a stderr warning.
+- Strength scoring measures password length in Unicode characters, not UTF-8 bytes.
+- Stats entropy uses Unicode character length, not UTF-8 bytes.
+- `--mutation-type` is optional; omitting it applies random mutations instead of always replacing.
+- `--mutation-type`, `--mutation-strength`, and `--lengthen` require `--mutate`.
+- Library password helpers reject Diceware mode and point callers at the diceware API.
+- Empty passwords are rejected for mutation; blank comma-separated CLI entries are ignored.
+- Interactive mode skips the pattern prompt when pronounceable passwords are selected.
+- Interactive password flow asks pronounceable first and only then avoid-repeating or pattern.
+- Interactive inputs reject zero length, count, and word values early.
+- Interactive mutation rejects empty passwords immediately and offers a random mutation type.
+- Interactive action errors return to the menu instead of exiting the session.
+- Interactive pattern prompt explains L/D/S templates and rejects literal strings early.
+- Interactive mutation strength and stats no longer clone secrets into temporary buffers.
+- Unknown `--allowed` character sets return an error instead of calling `process::exit`.
+- Removed unused dependencies (`chacha20`, `dashmap`, `regex`, `futures`, `rand_distr`).
+- Added CI workflow on push and pull request (fmt, clippy, test).
+### Changed
+- README options list documents `--pattern`, `--config`, `--profile`, and `--policy`; mutation and interactive notes clarified.
+- CLI password, passphrase, pronounceable, and deterministic paths share a post-generate helper.
+- Interactive and CLI share strength-meter and stats printers; interactive uses validators and a post-generate helper.
+- Interactive menu selection uses named actions instead of magic indices.
+- Release workflow uploads Linux, Windows, and macOS binaries in a single published release.
+- `--seed` help text and a stderr warning clarify that seeded output is insecure for real secrets.
+- `--strength` output is documented as a local heuristic estimate, not NIST or zxcvbn compliance.
+
 ## [0.5.0]
 ### Added
 - Deterministic password generation mode with `--deterministic`, `--service`, `--username`, and `--counter`.

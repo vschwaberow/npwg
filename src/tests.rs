@@ -5,6 +5,7 @@
 // Copyright (c) 2022 Volker Schwaberow
 
 #[cfg(test)]
+#[allow(clippy::module_inception)]
 mod tests {
     use crate::config::PasswordGeneratorConfig;
     use crate::error::PasswordGeneratorError;
@@ -25,7 +26,7 @@ mod tests {
     #[tokio::test]
     async fn test_password_generator_config_new() {
         let mut config = PasswordGeneratorConfig::new();
-        config.set_allowed_chars("allprint");
+        config.set_allowed_chars("allprint").unwrap();
         assert_eq!(config.length, 16);
         assert_eq!(config.allowed_chars.len(), 94);
         assert!(config.excluded_chars.is_empty());
@@ -36,7 +37,7 @@ mod tests {
     #[test]
     fn test_password_generator_config_validate() {
         let mut config = PasswordGeneratorConfig::new();
-        config.set_allowed_chars("allprint");
+        config.set_allowed_chars("allprint").unwrap();
         assert!(config.validate().is_ok());
 
         config.allowed_chars.clear();
@@ -46,7 +47,7 @@ mod tests {
     #[tokio::test]
     async fn test_generate_password() {
         let mut config = PasswordGeneratorConfig::new();
-        config.set_allowed_chars("allprint");
+        config.set_allowed_chars("allprint").unwrap();
         let password = generate_password(&config).await.unwrap();
         assert_eq!(password.len(), 16);
     }
@@ -54,17 +55,23 @@ mod tests {
     #[tokio::test]
     async fn test_generate_pronounceable_password_pattern() {
         let mut config = PasswordGeneratorConfig::new();
+        config.clear_allowed_chars();
+        config.allowed_chars = "aeb".chars().collect();
         config.pronounceable = true;
         config.length = 8;
+        config.seed = Some(9);
         let password = generate_pronounceable_password(&config).await.unwrap();
-        assert_eq!(password.len(), 8);
-        let consonants = "bcdfghjklmnpqrstvwxyz";
-        let vowels = "aeiou";
+        assert_eq!(password.chars().count(), 8);
+        let vowels: Vec<char> = "aeb".chars().filter(|c| "aeiou".contains(*c)).collect();
+        let consonants: Vec<char> = "aeb"
+            .chars()
+            .filter(|c| c.is_ascii_alphabetic() && !"aeiou".contains(*c))
+            .collect();
         for (idx, ch) in password.chars().enumerate() {
             if idx % 2 == 0 {
-                assert!(consonants.contains(ch));
+                assert!(consonants.contains(&ch));
             } else {
-                assert!(vowels.contains(ch));
+                assert!(vowels.contains(&ch));
             }
         }
     }
@@ -159,6 +166,14 @@ mod tests {
     }
 
     #[test]
+    fn test_show_stats_unicode_passwords() {
+        let passwords = vec!["äöüß".to_string(), "abcd".to_string()];
+        let stats = show_stats(&passwords);
+        assert!(stats.mean.is_finite());
+        assert!(stats.variance.is_finite());
+    }
+
+    #[test]
     fn test_show_stats_empty_list() {
         let passwords: Vec<String> = Vec::new();
         let stats = show_stats(&passwords);
@@ -187,9 +202,7 @@ mod tests {
 
         if let Err(err) = result {
             match err {
-                PasswordGeneratorError::InvalidConfig(_) => {
-                    assert!(true);
-                }
+                PasswordGeneratorError::InvalidConfig(_) => {}
                 _ => {
                     panic!("Expected InvalidConfig error, got {:?}", err);
                 }
@@ -200,7 +213,7 @@ mod tests {
     #[tokio::test]
     async fn test_generate_password_with_all_chars_excluded() {
         let mut config = PasswordGeneratorConfig::new();
-        config.set_allowed_chars("digit");
+        config.set_allowed_chars("digit").unwrap();
         config.excluded_chars.extend("0123456789".chars());
         let result = generate_password(&config).await;
         assert!(
@@ -210,9 +223,7 @@ mod tests {
 
         if let Err(err) = result {
             match err {
-                PasswordGeneratorError::InvalidConfig(_) => {
-                    assert!(true);
-                }
+                PasswordGeneratorError::InvalidConfig(_) => {}
                 _ => {
                     panic!("Expected InvalidConfig error, got {:?}", err);
                 }
@@ -223,11 +234,11 @@ mod tests {
     #[test]
     fn test_mutate_password_replace_changes_character() {
         let mut config = PasswordGeneratorConfig::new();
-        config.set_allowed_chars("lowerletter");
+        config.set_allowed_chars("lowerletter").unwrap();
         config.seed = Some(42);
         let forced = MutationType::Replace;
         let original = "password";
-        let mutated = mutate_password(original, &config, 0, 1, Some(&forced));
+        let mutated = mutate_password(original, &config, 0, 1, Some(&forced)).unwrap();
         assert_eq!(mutated.len(), original.len());
         assert_ne!(mutated, original);
     }
@@ -235,18 +246,51 @@ mod tests {
     #[test]
     fn test_mutate_password_lengthen_appends_characters() {
         let mut config = PasswordGeneratorConfig::new();
-        config.set_allowed_chars("digit");
+        config.set_allowed_chars("digit").unwrap();
         config.seed = Some(7);
         let original = "1234";
-        let mutated = mutate_password(original, &config, 3, 0, None);
+        let mutated = mutate_password(original, &config, 3, 0, None).unwrap();
         assert_eq!(mutated.len(), original.len() + 3);
         assert!(mutated.starts_with(original));
     }
-}
 
+    #[test]
+    fn test_mutate_password_rejects_empty() {
+        let config = PasswordGeneratorConfig::new();
+        let err = mutate_password("", &config, 0, 1, None).unwrap_err();
+        assert!(matches!(err, PasswordGeneratorError::InvalidConfig(_)));
+    }
+
+    #[test]
+    fn test_mutate_password_respects_excluded_chars() {
+        let mut config = PasswordGeneratorConfig::new();
+        config.set_allowed_chars("lowerletter").unwrap();
+        config.excluded_chars.extend("aeiou".chars());
+        config.seed = Some(99);
+        let original = "bcdfg";
+        let mutated = mutate_password(original, &config, 5, 0, None).unwrap();
+        assert!(!mutated.chars().any(|c| "aeiou".contains(c)));
+    }
+}
 #[cfg(test)]
 mod strength_tests {
-    use crate::strength::{calculate_entropy, get_theoretical_char_set_size};
+    use crate::strength::{
+        calculate_entropy, get_improvement_suggestions, get_theoretical_char_set_size,
+    };
+
+    #[test]
+    fn test_strength_length_uses_char_count_for_unicode() {
+        // Four Unicode characters, eight UTF-8 bytes.
+        let unicode = "äöüß";
+        assert_eq!(unicode.chars().count(), 4);
+        assert_eq!(unicode.len(), 8);
+        let suggestions = get_improvement_suggestions(unicode);
+        assert!(
+            suggestions.iter().any(|s| s.contains("length")),
+            "short Unicode passwords must use character count, not byte length"
+        );
+        let _ = calculate_entropy(unicode);
+    }
 
     #[test]
     fn test_gcss_empty() {
@@ -380,36 +424,13 @@ mod pattern_tests {
     use crate::generator::generate_with_pattern;
 
     #[test]
-    fn test_generate_with_pattern_skip_unfulfillable_chars() {
+    fn test_generate_with_pattern_rejects_unfulfillable_symbols() {
         let available_chars: Vec<char> = "abcdefg".chars().collect();
         let pattern = "LDLS";
         let length = 10;
         let seed = None;
 
-        let result = generate_with_pattern(pattern, &available_chars, length, seed);
-        assert!(
-            result.is_ok(),
-            "Expected successful generation despite unfulfillable pattern"
-        );
-
-        let password = result.unwrap();
-        assert_eq!(
-            password.len(),
-            length,
-            "Password should match the requested length"
-        );
-
-        for c in password.chars() {
-            assert!(
-                available_chars.contains(&c),
-                "Password contains character not in available_chars: {}",
-                c
-            );
-        }
-
-        assert!(
-            !password.chars().any(|c| c.is_ascii_digit()),
-            "Password should not contain digits"
-        );
+        let result = generate_with_pattern(pattern, &available_chars, length, seed, false);
+        assert!(result.is_err());
     }
 }

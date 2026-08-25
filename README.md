@@ -11,7 +11,7 @@ npwg is a secure password generator written in Rust. With npwg, you can easily g
 - Customizable password length, count, character sets, and separators
 - Avoid repeating characters in passwords
 - Display statistics about the generated passwords
-- Show the estimated strength of the generated passwords
+- Show a local heuristic strength estimate for generated passwords (not NIST or zxcvbn)
 - Interactive mode for easy password generation
 - Deterministic mode for password derivation from a master password and service
 
@@ -54,18 +54,23 @@ npwg [OPTIONS]
 
 - `-l, --length <LENGTH>`: Sets the length of the password [default: 16]
 - `-c, --count <COUNT>`: Sets the number of passwords to generate [default: 1]
-- `--avoid-repeating`: Avoid repeating characters in the password
+- `--avoid-repeating`: Avoid consecutive repeating characters in the password
 - `--stats`: Show statistics about the generated passwords
-- `--strength`: Show strength meter for the generated passwords
+- `--strength`: Show a local heuristic strength estimate (not a formal compliance check)
 - `-a, --allowed <CHARS>`: Sets the allowed characters [default: allprint]
-- `--use-words`: Use words instead of characters
+- `--use-words`: Use diceware words instead of characters (EFF large wordlist, SHA-256 pinned)
 - `-i, --interactive`: Start interactive console mode
+- `--config <PATH>`: Path to a configuration file with defaults and profiles
+- `--profile <NAME>`: Name of a profile from the configuration file
+- `--policy <POLICY>`: Apply a built-in password policy (`windows-ad`, `pci-dss`, `nist-high`)
 - `--separator <SEPARATOR>`: Sets the separator for diceware passphrases (single character or 'random')
-- `--pronounceable`: Generate pronounceable passwords
-- `--mutate`: Mutate the passwords
-- `--mutation-type <TYPE>`: Type of mutation to apply [default: replace]
+- `--pronounceable`: Generate pronounceable passwords from allowed vowels and consonants
+- `-p, --pattern <PATTERN>`: Pattern template (`L`=letter, `D`=digit, `S`=symbol; e.g. `LLDDS`)
+- `--mutate`: Mutate the passwords (`--copy` copies the mutated results)
+- `--mutation-type <TYPE>`: Type of mutation to apply (omit for random)
 - `--mutation-strength <STRENGTH>`: Strength of mutation [default: 1]
 - `--lengthen <INCREASE>`: Increase the length of passwords during mutation
+- `-s, --seed <SEED>`: Seed the RNG for reproducible output (testing only; insecure for real secrets)
 - `--copy`: Copy the generated password to the clipboard
 - `--qr`: Print the generated passwords as QR codes
 - `--deterministic`: Generate passwords deterministically from a master password and service
@@ -108,7 +113,7 @@ Inspect entropy and statistics in one pass:
 npwg --strength --stats
 ```
 
-Copy freshly generated secrets to the clipboard:
+Copy freshly generated secrets to the clipboard (on Linux the helper reads stdin, holds for 45 seconds, then clears and exits):
 
 ```sh
 npwg --copy
@@ -122,7 +127,7 @@ npwg --qr --count 2
 
 #### Diceware Passphrases
 
-First run downloads and verifies the EFF wordlist automatically. Generate six-word phrases separated by spaces:
+First run downloads the EFF large wordlist and verifies it against a pinned SHA-256 checksum. Generate six-word phrases separated by spaces:
 
 ```sh
 npwg --use-words --length 6
@@ -137,13 +142,13 @@ npwg --use-words --separator random --length 7
 
 #### Pronounceable and Pattern Modes
 
-Create pronounceable strings that alternate consonants and vowels:
+Create pronounceable strings that alternate consonants and vowels from the allowed character set:
 
 ```sh
 npwg --pronounceable --length 10
 ```
 
-Enforce structural patterns (L=letter, D=digit, S=symbol):
+Enforce structural patterns (L=letter, D=digit, S=symbol). Unfulfillable symbols error out:
 
 ```sh
 npwg --pattern LLDDS --length 16
@@ -151,7 +156,7 @@ npwg --pattern LLDDS --length 16
 
 #### Mutation Workflow
 
-Tweak existing passwords by applying deterministic mutations and optional lengthening:
+Tweak existing passwords with mutations (omit `--mutation-type` for random) and optional lengthening:
 
 ```sh
 npwg --mutate --mutation-type swap --mutation-strength 2 --lengthen 3
@@ -171,7 +176,7 @@ Include an optional username and counter to create distinct variants:
 npwg --deterministic --service example.com --username alice --counter 2 --length 24
 ```
 
-Use interactive mode for guided generation and mutation prompts:
+Use interactive mode for guided password, passphrase, and mutation prompts. Pattern prompts use `L`/`D`/`S` templates (not literal strings); charset, policy, and profile stay on the CLI:
 
 ```sh
 npwg --interactive

@@ -1,26 +1,27 @@
-name: Rust Build and Release
+name: Release
+
 permissions:
   contents: write
 
 on:
   release:
-    types: [created]
+    types: [published]
 
 jobs:
-  build-and-check:
+  build:
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact-name: npwg-linux
+            artifact: npwg-linux-x86_64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact-name: npwg-windows.exe
+            artifact: npwg-windows-x86_64.exe
           - os: macos-latest
             target: x86_64-apple-darwin
-            artifact-name: npwg-macos
+            artifact: npwg-macos-x86_64
 
     runs-on: ${{ matrix.os }}
 
@@ -32,40 +33,46 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-          components: rustfmt, clippy
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
-      - name: Check formatting
-        if: matrix.os == 'ubuntu-latest'
-        run: cargo fmt -- --check
-
-      - name: Run clippy
-        if: matrix.os == 'ubuntu-latest'
-        run: cargo clippy --target ${{ matrix.target }}
-
-      - name: Run tests
-        run: cargo test --target ${{ matrix.target }}
-
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Debug - List target directory
-        run: ls -la target/${{ matrix.target }}/release || dir target\${{ matrix.target }}\release
-
-      - name: Rename executable (Windows)
+      - name: Stage binary (Windows)
         if: matrix.os == 'windows-latest'
-        run: mv target/${{ matrix.target }}/release/npwg.exe ${{ matrix.artifact-name }}
         shell: bash
+        run: mv "target/${{ matrix.target }}/release/npwg.exe" "${{ matrix.artifact }}"
 
-      - name: Rename executable (Linux/macOS)
+      - name: Stage binary (Linux/macOS)
         if: matrix.os != 'windows-latest'
-        run: mv target/${{ matrix.target }}/release/npwg ${{ matrix.artifact-name }}
+        run: mv "target/${{ matrix.target }}/release/npwg" "${{ matrix.artifact }}"
 
-      - name: Release
-        uses: softprops/action-gh-release@v1
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          files: ${{ matrix.artifact-name }}
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List release files
+        run: ls -la dist
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}⏎   
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

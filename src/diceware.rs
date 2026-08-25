@@ -10,14 +10,15 @@ use dirs::home_dir;
 use reqwest::Client;
 use sha2::{Digest, Sha256};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 
 const DICEWARE_FILENAME: &str = "diceware_wordlist.txt";
 const DICEWARE_URL: &str = "https://www.eff.org/files/2016/07/18/eff_large_wordlist.txt";
-const DICEWARE_CHECKSUM_FILENAME: &str = "diceware_wordlist.sha256";
 const DICEWARE_TIMEOUT: Duration = Duration::from_secs(15);
 const EXPECTED_WORDLIST_LINES: usize = 7776;
+const EXPECTED_WORDLIST_SHA256: &str =
+    "addd35536511597a02fa0a9ff1e5284677b8883b83e986e43f15a3db996b903e";
 
 pub async fn get_wordlist() -> Result<Vec<String>> {
     let home = home_dir().ok_or_else(|| {
@@ -31,13 +32,22 @@ pub async fn get_wordlist() -> Result<Vec<String>> {
     }
 
     download_wordlist(&workdir, &wordlist_path).await?;
-    Err(PasswordGeneratorError::WordlistDownloaded)
+    load_wordlist(&wordlist_path)
 }
 
 fn load_wordlist(wordlist_path: &Path) -> Result<Vec<String>> {
     let contents = fs::read_to_string(wordlist_path)?;
     validate_wordlist(&contents, wordlist_path)?;
-    Ok(parse_wordlist(&contents))
+    let words = parse_wordlist(&contents);
+    if words.len() != EXPECTED_WORDLIST_LINES {
+        return Err(PasswordGeneratorError::WordlistValidation(format!(
+            "Expected {} words in {}, parsed {}",
+            EXPECTED_WORDLIST_LINES,
+            wordlist_path.display(),
+            words.len()
+        )));
+    }
+    Ok(words)
 }
 
 async fn download_wordlist(workdir: &Path, wordlist_path: &Path) -> Result<()> {
@@ -62,8 +72,8 @@ async fn download_wordlist(workdir: &Path, wordlist_path: &Path) -> Result<()> {
         ))
     })?;
 
-    fs::write(wordlist_path, contents.as_bytes())?;
     validate_wordlist(&contents, wordlist_path)?;
+    fs::write(wordlist_path, contents.as_bytes())?;
 
     println!("Wordlist downloaded to {:?}", wordlist_path);
     Ok(())
@@ -74,6 +84,13 @@ fn parse_wordlist(contents: &str) -> Vec<String> {
         .lines()
         .filter_map(|line| line.split_once('\t'))
         .map(|(_, word)| word.to_string())
+        .collect()
+}
+
+fn hex_sha256(data: &[u8]) -> String {
+    Sha256::digest(data)
+        .iter()
+        .map(|byte| format!("{:02x}", byte))
         .collect()
 }
 
@@ -88,27 +105,13 @@ fn validate_wordlist(contents: &str, wordlist_path: &Path) -> Result<()> {
         )));
     }
 
-    let checksum = format!("{:x}", Sha256::digest(contents.as_bytes()));
-    let checksum_path = checksum_path(wordlist_path);
-
-    if checksum_path.exists() {
-        let stored = fs::read_to_string(&checksum_path)?.trim().to_string();
-        if stored != checksum {
-            return Err(PasswordGeneratorError::WordlistValidation(format!(
-                "Checksum mismatch for {}. Delete the wordlist and rerun npwg to redownload.",
-                wordlist_path.display()
-            )));
-        }
-    } else {
-        fs::write(&checksum_path, &checksum)?;
+    let checksum = hex_sha256(contents.as_bytes());
+    if checksum != EXPECTED_WORDLIST_SHA256 {
+        return Err(PasswordGeneratorError::WordlistValidation(format!(
+            "Checksum mismatch for {}. Delete the wordlist and rerun npwg to redownload.",
+            wordlist_path.display()
+        )));
     }
 
     Ok(())
-}
-
-fn checksum_path(wordlist_path: &Path) -> PathBuf {
-    wordlist_path
-        .parent()
-        .map(|parent| parent.join(DICEWARE_CHECKSUM_FILENAME))
-        .unwrap_or_else(|| PathBuf::from(DICEWARE_CHECKSUM_FILENAME))
 }

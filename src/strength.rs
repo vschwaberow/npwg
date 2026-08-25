@@ -4,38 +4,34 @@
 // Author: Volker Schwaberow <volker@schwaberow.de>
 // Copyright (c) 2022 Volker Schwaberow
 
+use colored::Colorize;
 use std::collections::{HashMap, HashSet};
 use std::f64;
 
-/// Evaluates password strength using a comprehensive multi-factor analysis approach.
+/// Returns a local heuristic strength estimate between 0.0 and 1.0.
 ///
-/// This implementation is based on multiple academic research papers on password security:
-/// - Shannon entropy calculation for character-set complexity
-/// - NIST SP 800-63B guideline compliance
-/// - Pattern-based vulnerability detection (similar to zxcvbn)
-/// - Markov model principles for sequential probability
+/// This is not a NIST audit or a zxcvbn-equivalent check. It combines Shannon-style
+/// entropy, simple pattern penalties, character diversity, and a short common-password list.
 ///
-/// Returns a normalized score between 0.0 and 1.0 where:
+/// Bands:
 /// - 0.0-0.3: Very weak to weak
 /// - 0.3-0.6: Moderate
 /// - 0.6-0.8: Strong
 /// - 0.8-1.0: Very strong
 pub fn evaluate_password_strength(password: &str) -> f64 {
     // Calculate multiple metrics
-    let _length = password.len() as f64;
     let entropy_score = calculate_entropy(password);
     let pattern_penalty = detect_patterns(password);
     let diversity_score = calculate_diversity(password);
     let nist_compliance_score = check_nist_compliance(password);
 
     // Weighted combination of metrics (weights determined by empirical testing)
-    let weighted_score = ((entropy_score * 0.45)
+
+    ((entropy_score * 0.45)
         + (diversity_score * 0.25)
         + (nist_compliance_score * 0.15)
         + (pattern_penalty * 0.15))
-        .min(1.0);
-
-    weighted_score
+        .min(1.0)
 }
 
 /// Calculates Shannon entropy with adjustments for actual character distribution
@@ -49,7 +45,7 @@ pub fn calculate_entropy(password: &str) -> f64 {
         *char_counts.entry(c).or_insert(0) += 1;
     }
 
-    let len = password.len() as f64;
+    let len = password.chars().count() as f64;
     let mut entropy = 0.0;
     for count in char_counts.values() {
         let probability = (*count as f64) / len;
@@ -72,7 +68,7 @@ pub fn calculate_entropy(password: &str) -> f64 {
 
     let length_factor = 1.0 - (1.0 / (0.3 * len + 1.0));
     let weighted_score = normalized_entropy * 0.7 + length_factor * 0.3;
-    weighted_score.max(0.0).min(1.0)
+    weighted_score.clamp(0.0, 1.0)
 }
 
 /// Detects common patterns in passwords and returns a penalty score
@@ -117,7 +113,7 @@ fn detect_patterns(password: &str) -> f64 {
 /// Calculates character diversity score based on unique character types and distribution
 fn calculate_diversity(password: &str) -> f64 {
     let mut char_types = HashSet::new();
-    let total_chars = password.len() as f64;
+    let total_chars = password.chars().count() as f64;
 
     // Count frequencies of different character types
     let mut lowercase_count = 0;
@@ -172,17 +168,17 @@ fn calculate_diversity(password: &str) -> f64 {
     (type_diversity * 0.8 + distribution_score * 0.2).min(1.0)
 }
 
-/// Checks password against NIST SP 800-63B guidelines
+/// Applies simplified length and repetition checks inspired by common password guidance
 fn check_nist_compliance(password: &str) -> f64 {
     let mut score = 1.0;
 
     // NIST guideline: Minimum 8 characters
-    if password.len() < 8 {
+    if password.chars().count() < 8 {
         score *= 0.5;
     }
 
     // Check for repetition of the same character
-    if password.len() > 1 {
+    if password.chars().count() > 1 {
         let chars: Vec<char> = password.chars().collect();
         for i in 1..chars.len() {
             if chars[i] == chars[i - 1] {
@@ -361,21 +357,11 @@ fn contains_leetspeak(password: &str) -> bool {
         }
     }
 
-    // Check for patterns of leetspeak substitutions
-    let mut contains_substitution = false;
-    if password.contains('0') && password.contains('o') {
-        contains_substitution = true;
-    } else if password.contains('1') && password.contains('i') {
-        contains_substitution = true;
-    } else if password.contains('@') && password.contains('a') {
-        contains_substitution = true;
-    } else if password.contains('3') && password.contains('e') {
-        contains_substitution = true;
-    } else if password.contains('5') && password.contains('s') {
-        contains_substitution = true;
-    }
-
-    contains_substitution
+    (password.contains('0') && password.contains('o'))
+        || (password.contains('1') && password.contains('i'))
+        || (password.contains('@') && password.contains('a'))
+        || (password.contains('3') && password.contains('e'))
+        || (password.contains('5') && password.contains('s'))
 }
 
 /// Detects date patterns in the password
@@ -383,31 +369,27 @@ fn contains_date_pattern(password: &str) -> bool {
     // Check for common date formats: MMDDYYYY, DDMMYYYY, MMDDYY, DDMMYY, etc.
     let digits: String = password.chars().filter(|c| c.is_ascii_digit()).collect();
 
-    if digits.len() >= 6 {
-        if digits.len() == 6 || digits.len() == 8 {
-            // Simple validation for plausible date components
-            let possible_month = &digits[0..2];
-            let possible_day = &digits[2..4];
+    if digits.len() >= 6 && (digits.len() == 6 || digits.len() == 8) {
+        // Simple validation for plausible date components
+        let possible_month = &digits[0..2];
+        let possible_day = &digits[2..4];
 
-            let month = possible_month.parse::<u32>().unwrap_or(0);
-            let day = possible_day.parse::<u32>().unwrap_or(0);
+        let month = possible_month.parse::<u32>().unwrap_or(0);
+        let day = possible_day.parse::<u32>().unwrap_or(0);
 
-            if (month >= 1 && month <= 12) && (day >= 1 && day <= 31) {
-                return true;
-            }
+        if (1..=12).contains(&month) && (1..=31).contains(&day) {
+            return true;
+        }
 
-            // Check alternate format (day/month instead of month/day)
-            let alt_month = possible_day;
-            let alt_day = possible_month;
+        // Check alternate format (day/month instead of month/day)
+        let alt_month = possible_day;
+        let alt_day = possible_month;
 
-            let alt_month_val = alt_month.parse::<u32>().unwrap_or(0);
-            let alt_day_val = alt_day.parse::<u32>().unwrap_or(0);
+        let alt_month_val = alt_month.parse::<u32>().unwrap_or(0);
+        let alt_day_val = alt_day.parse::<u32>().unwrap_or(0);
 
-            if (alt_month_val >= 1 && alt_month_val <= 12)
-                && (alt_day_val >= 1 && alt_day_val <= 31)
-            {
-                return true;
-            }
+        if (1..=12).contains(&alt_month_val) && (1..=31).contains(&alt_day_val) {
+            return true;
         }
     }
 
@@ -527,7 +509,7 @@ pub fn get_strength_feedback(score: f64) -> String {
 pub fn get_improvement_suggestions(password: &str) -> Vec<String> {
     let mut suggestions = Vec::new();
 
-    if password.len() < 12 {
+    if password.chars().count() < 12 {
         suggestions.push("Increase password length to at least 12 characters".to_string());
     }
 
@@ -594,4 +576,44 @@ pub fn get_strength_bar(score: f64) -> String {
     let empty = "░".repeat(empty_length);
 
     format!("[{}{}]", filled, empty)
+}
+
+pub fn print_strength_meter<S: AsRef<str>>(data: &[S], show_password: bool) {
+    println!("\n{}", "Password Strength:".blue().bold());
+    for (i, password) in data.iter().enumerate() {
+        let password = password.as_ref();
+        let strength = evaluate_password_strength(password);
+        let feedback = get_strength_feedback(strength);
+        let strength_bar = get_strength_bar(strength);
+        let password_display = if show_password {
+            password.yellow().to_string()
+        } else {
+            "(hidden)".dimmed().to_string()
+        };
+        println!(
+            "Password {}: {} {:.2} {} {}",
+            i + 1,
+            strength_bar,
+            strength,
+            feedback.color(match &*feedback {
+                "Very Weak" => "red",
+                "Weak" => "yellow",
+                "Moderate" => "blue",
+                "Strong" => "green",
+                "Very Strong" => "bright green",
+                _ => "white",
+            }),
+            password_display
+        );
+
+        if strength < 0.6 {
+            let suggestions = get_improvement_suggestions(password);
+            if !suggestions.is_empty() {
+                println!("  {}:", "Improvement suggestions".cyan());
+                for suggestion in suggestions {
+                    println!("   • {}", suggestion);
+                }
+            }
+        }
+    }
 }

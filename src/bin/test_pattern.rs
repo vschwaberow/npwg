@@ -6,21 +6,13 @@ fn main() {
     let length = 10;
     let seed = None;
 
-    match generate_with_pattern(pattern, &available_chars, length, seed) {
-        Ok(password) => {
-            println!("Password generated: {}", password);
-            println!("Password length: {}", password.len());
-
-            let all_valid = password.chars().all(|c| available_chars.contains(&c));
-            println!("All characters valid: {}", all_valid);
-
-            let contains_digits = password.chars().any(|c| c.is_ascii_digit());
-            println!("Contains digits: {} (should be false)", contains_digits);
-
-            assert!(all_valid, "Password should only contain valid characters");
-            assert!(!contains_digits, "Password should not contain digits");
-            println!("Tests passed!");
+    match generate_with_pattern(pattern, &available_chars, length, seed, false) {
+        Ok(_) => {
+            eprintln!("Expected pattern error for unfulfillable LDLS on abcdefg");
+            std::process::exit(1);
         }
-        Err(e) => println!("Error: {:?}", e),
+        Err(e) => {
+            println!("Pattern correctly rejected: {:?}", e);
+        }
     }
 }

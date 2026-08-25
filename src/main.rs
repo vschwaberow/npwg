@@ -15,9 +15,9 @@ mod stats;
 mod strength;
 
 const DAEMONIZE_ARG: &str = "__internal_daemonize";
+const CLIPBOARD_DAEMON_HOLD_SECS: u64 = 45;
 
 use std::io::Write;
-use std::process;
 
 use arboard::Clipboard;
 #[cfg(target_os = "linux")]
@@ -34,11 +34,8 @@ use generator::{
 use policy::{apply_policy, PolicyName};
 use profile::{apply_allowed_sets, apply_profile, load_user_profiles, parse_separator};
 use qrcodegen::{QrCode, QrCodeEcc};
-use stats::show_stats;
-use strength::{
-    evaluate_password_strength, get_improvement_suggestions, get_strength_bar,
-    get_strength_feedback,
-};
+use stats::print_stats;
+use strength::print_strength_meter;
 use zeroize::{Zeroize, Zeroizing};
 
 impl From<arboard::Error> for PasswordGeneratorError {
@@ -64,6 +61,12 @@ async fn main() -> Result<()> {
     }
 
     let config = build_config(&matches)?;
+    if config.seed.is_some() {
+        eprintln!(
+            "{}",
+            "Warning: --seed makes output predictable; do not use for real secrets.".yellow()
+        );
+    }
 
     let copy = matches.get_flag("copy");
 
@@ -184,7 +187,8 @@ fn build_cli() -> Command {
             Arg::new("pronounceable")
                 .long("pronounceable")
                 .help("Generate pronounceable passwords")
-                .action(ArgAction::SetTrue),
+                .action(ArgAction::SetTrue)
+                .conflicts_with_all(["pattern", "use-words"]),
         )
         .arg(
             Arg::new("mutate")
@@ -195,23 +199,25 @@ fn build_cli() -> Command {
         .arg(
             Arg::new("mutation_type")
                 .long("mutation-type")
-                .help("Type of mutation to apply")
+                .help("Type of mutation to apply (omit for random)")
                 .value_parser(value_parser!(MutationType))
-                .default_value("replace"),
+                .requires("mutate"),
         )
         .arg(
             Arg::new("mutation_strength")
                 .long("mutation-strength")
                 .help("Strength of mutation")
                 .default_value("1")
-                .value_parser(value_parser!(u32)),
+                .value_parser(value_parser!(u32))
+                .requires("mutate"),
         )
         .arg(
             Arg::new("lengthen")
                 .long("lengthen")
                 .value_name("INCREASE")
                 .help("Increase the length of passwords during mutation")
-                .value_parser(value_parser!(usize)),
+                .value_parser(value_parser!(usize))
+                .requires("mutate"),
         )
         .arg(
             Arg::new("copy")
@@ -230,7 +236,8 @@ fn build_cli() -> Command {
                 .short('p')
                 .long("pattern")
                 .help("Pattern for password generation (e.g., LLDDS)")
-                .value_parser(value_parser!(String)),
+                .value_parser(value_parser!(String))
+                .conflicts_with_all(["pronounceable", "use-words"]),
         )
         .group(
             ArgGroup::new("generation")
@@ -254,7 +261,7 @@ fn build_cli() -> Command {
                 .short('s')
                 .long("seed")
                 .value_name("SEED")
-                .help("Sets the seed for the random number generator")
+                .help("Seed the RNG for reproducible output (insecure for real secrets; testing only)")
                 .value_parser(value_parser!(u64)),
         )
         .arg(
@@ -311,19 +318,6 @@ fn build_config(matches: &clap::ArgMatches) -> Result<PasswordGeneratorConfig> {
         apply_profile(profile_definition, &mut config)?;
     }
 
-    let mut policy_minimum_length: Option<usize> = None;
-    if let Some(policy) = matches.get_one::<PolicyName>("policy").copied() {
-        let details = apply_policy(policy, &mut config)?;
-        println!(
-            "Applying policy {} ({}). Minimum length: {} characters, recommended entropy ≈ {:.1} bits.",
-            details.label.green(),
-            details.description,
-            details.minimum_length,
-            details.recommended_entropy_bits
-        );
-        policy_minimum_length = Some(details.minimum_length);
-    }
-
     if matches.value_source("length") == Some(ValueSource::CommandLine) {
         config.length = *matches.get_one::<u8>("length").unwrap() as usize;
     }
@@ -339,15 +333,7 @@ fn build_config(matches: &clap::ArgMatches) -> Result<PasswordGeneratorConfig> {
 
     if matches.value_source("allowed") == Some(ValueSource::CommandLine) {
         let allowed = matches.get_one::<String>("allowed").unwrap();
-        if let Err(error) = apply_allowed_sets(&mut config, allowed) {
-            match error {
-                PasswordGeneratorError::ConfigFile(message) => {
-                    eprintln!("Error: {}", message.red());
-                    process::exit(1);
-                }
-                _ => return Err(error),
-            }
-        }
+        apply_allowed_sets(&mut config, allowed)?;
     }
 
     if matches.get_flag("use-words") {
@@ -368,17 +354,25 @@ fn build_config(matches: &clap::ArgMatches) -> Result<PasswordGeneratorConfig> {
         config.pattern = matches.get_one::<String>("pattern").cloned();
     }
 
-    if let Some(min_length) = policy_minimum_length {
-        if config.length < min_length {
+    if let Some(policy) = matches.get_one::<PolicyName>("policy").copied() {
+        let details = apply_policy(policy, &mut config)?;
+        println!(
+            "Applying policy {} ({}). Minimum length: {} characters, recommended entropy ≈ {:.1} bits.",
+            details.label.green(),
+            details.description,
+            details.minimum_length,
+            details.recommended_entropy_bits
+        );
+        if config.length < details.minimum_length {
             println!(
                 "{}",
                 format!(
                     "Policy requires at least {} characters; clamping requested length to {}.",
-                    min_length, min_length
+                    details.minimum_length, details.minimum_length
                 )
                 .yellow()
             );
-            config.length = min_length;
+            config.length = details.minimum_length;
         }
     }
 
@@ -395,32 +389,14 @@ async fn handle_diceware(
     matches: &clap::ArgMatches,
     copy: bool,
 ) -> Result<()> {
-    let wordlist = match diceware::get_wordlist().await {
-        Ok(list) => list,
-        Err(PasswordGeneratorError::WordlistDownloaded) => {
-            println!("Wordlist downloaded. Please run the program again.");
-            return Ok(());
-        }
-        Err(e) => return Err(e),
-    };
-
+    let wordlist = diceware::get_wordlist().await?;
     let passphrases = generate_diceware_passphrase(&wordlist, config).await?;
-    render_secrets(&passphrases, matches.get_flag("qr"))?;
-
-    if copy && !passphrases.is_empty() {
-        copy_to_clipboard(&passphrases.join("\n"))?;
-        println!("{}", "Passphrase(s) copied to clipboard.".bold().green());
-    }
-
-    if matches.get_flag("strength") {
-        print_strength_meter(&passphrases, !matches.get_flag("qr"));
-    }
-
-    if matches.get_flag("stats") {
-        print_stats(&passphrases);
-    }
-
-    Ok(())
+    finish_cli_secrets(
+        passphrases,
+        matches,
+        copy,
+        "Passphrase(s) copied to clipboard.",
+    )
 }
 
 async fn handle_password(
@@ -429,23 +405,7 @@ async fn handle_password(
     copy: bool,
 ) -> Result<()> {
     let passwords = generate_passwords(config).await?;
-    render_secrets(&passwords, matches.get_flag("qr"))?;
-
-    if copy && !passwords.is_empty() {
-        copy_to_clipboard(&passwords.join("\n"))?;
-        println!("{}", "Password(s) copied to clipboard.".bold().green());
-    }
-
-    if matches.get_flag("strength") {
-        print_strength_meter(&passwords, !matches.get_flag("qr"));
-    }
-
-    if matches.get_flag("stats") {
-        print_stats(&passwords);
-    }
-
-    passwords.into_iter().for_each(|mut p| p.zeroize());
-    Ok(())
+    finish_cli_secrets(passwords, matches, copy, "Password(s) copied to clipboard.")
 }
 
 async fn handle_pronounceable(
@@ -454,23 +414,12 @@ async fn handle_pronounceable(
     copy: bool,
 ) -> Result<()> {
     let passwords = generate_pronounceable_passwords(config).await?;
-    render_secrets(&passwords, matches.get_flag("qr"))?;
-
-    if copy && !passwords.is_empty() {
-        copy_to_clipboard(&passwords.join("\n"))?;
-        println!("{}", "Passphrase(s) copied to clipboard.".bold().green());
-    }
-
-    if matches.get_flag("strength") {
-        print_strength_meter(&passwords, !matches.get_flag("qr"));
-    }
-
-    if matches.get_flag("stats") {
-        print_stats(&passwords);
-    }
-
-    passwords.into_iter().for_each(|mut p| p.zeroize());
-    Ok(())
+    finish_cli_secrets(
+        passwords,
+        matches,
+        copy,
+        "Passphrase(s) copied to clipboard.",
+    )
 }
 
 async fn handle_deterministic(
@@ -529,23 +478,7 @@ async fn handle_deterministic(
         passwords.push(password);
     }
 
-    render_secrets(&passwords, matches.get_flag("qr"))?;
-
-    if copy && !passwords.is_empty() {
-        copy_to_clipboard(&passwords.join("\n"))?;
-        println!("{}", "Password(s) copied to clipboard.".bold().green());
-    }
-
-    if matches.get_flag("strength") {
-        print_strength_meter(&passwords, !matches.get_flag("qr"));
-    }
-
-    if matches.get_flag("stats") {
-        print_stats(&passwords);
-    }
-
-    passwords.into_iter().for_each(|mut p| p.zeroize());
-    Ok(())
+    finish_cli_secrets(passwords, matches, copy, "Password(s) copied to clipboard.")
 }
 
 async fn handle_mutation(
@@ -558,25 +491,36 @@ async fn handle_mutation(
         .interact_text()?
         .split(',')
         .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
         .collect();
+    if passwords.is_empty() {
+        return Err(PasswordGeneratorError::InvalidConfig(
+            "No passwords provided to mutate.".to_string(),
+        ));
+    }
 
     let lengthen = matches.get_one::<usize>("lengthen").unwrap_or(&0);
 
-    let cli_mutation_type_arg = matches.get_one::<MutationType>("mutation_type");
+    let cli_mutation_type_arg =
+        if matches.value_source("mutation_type") == Some(ValueSource::CommandLine) {
+            matches.get_one::<MutationType>("mutation_type")
+        } else {
+            None
+        };
 
     let mutation_strength = matches.get_one::<u32>("mutation_strength").unwrap_or(&1);
 
-    let passwords_clone = passwords.clone();
+    let mut mutated_passwords = Vec::with_capacity(passwords.len());
 
     println!("\n{}", "Mutated Passwords:".bold().green());
-    for password in passwords {
+    for mut password in passwords {
         let mutated = mutate_password(
             &password,
             config,
             *lengthen,
             *mutation_strength,
             cli_mutation_type_arg,
-        );
+        )?;
         println!("Original: {}", password.yellow());
         let mutation_type_display = cli_mutation_type_arg
             .map(|t| t.to_string())
@@ -587,21 +531,49 @@ async fn handle_mutation(
             mutation_type_display
         );
         println!();
+        password.zeroize();
+        mutated_passwords.push(mutated);
     }
 
-    if copy && !passwords_clone.is_empty() {
-        copy_to_clipboard(&passwords_clone.join("\n"))?;
-        println!("{}", "Passphrase(s) copied to clipboard.".bold().green());
+    if copy && !mutated_passwords.is_empty() {
+        copy_secrets_to_clipboard(&mutated_passwords)?;
+        println!("{}", "Password(s) copied to clipboard.".bold().green());
     }
 
     if matches.get_flag("strength") {
-        print_strength_meter(&passwords_clone, true);
+        print_strength_meter(&mutated_passwords, true);
     }
 
     if matches.get_flag("stats") {
-        print_stats(&passwords_clone);
+        print_stats(&mutated_passwords);
     }
 
+    mutated_passwords.into_iter().for_each(|mut p| p.zeroize());
+    Ok(())
+}
+
+fn finish_cli_secrets(
+    mut secrets: Vec<String>,
+    matches: &clap::ArgMatches,
+    copy: bool,
+    copy_label: &str,
+) -> Result<()> {
+    render_secrets(&secrets, matches.get_flag("qr"))?;
+
+    if copy && !secrets.is_empty() {
+        copy_secrets_to_clipboard(&secrets)?;
+        println!("{}", copy_label.bold().green());
+    }
+
+    if matches.get_flag("strength") {
+        print_strength_meter(&secrets, !matches.get_flag("qr"));
+    }
+
+    if matches.get_flag("stats") {
+        print_stats(&secrets);
+    }
+
+    secrets.iter_mut().for_each(|p| p.zeroize());
     Ok(())
 }
 
@@ -642,29 +614,42 @@ fn print_qr(text: &str) -> Result<()> {
     Ok(())
 }
 
+fn copy_secrets_to_clipboard(secrets: &[String]) -> Result<()> {
+    let mut clipboard_text = secrets.join("\n");
+    let result = copy_to_clipboard(&clipboard_text);
+    clipboard_text.zeroize();
+    result
+}
+
 fn copy_to_clipboard(text: &str) -> Result<()> {
-    ensure_clipboard_text(text)?;
     #[cfg(target_os = "linux")]
     {
         use std::env;
+        use std::io::Read;
 
         if env::args().any(|arg| arg == DAEMONIZE_ARG) {
-            let text = env::var("CLIPBOARD_TEXT").map_err(|_| {
-                PasswordGeneratorError::ClipboardError(
-                    "Failed to read CLIPBOARD_TEXT environment variable".to_string(),
-                )
+            let mut text = String::new();
+            std::io::stdin().read_to_string(&mut text).map_err(|e| {
+                PasswordGeneratorError::ClipboardError(format!(
+                    "Failed to read clipboard secret from stdin: {}",
+                    e
+                ))
             })?;
+            ensure_clipboard_text(&text)?;
             write_to_clipboard(&text)?;
-            loop {
-                std::thread::sleep(std::time::Duration::from_secs(1));
-            }
+            text.zeroize();
+            std::thread::sleep(std::time::Duration::from_secs(CLIPBOARD_DAEMON_HOLD_SECS));
+            clear_clipboard()?;
+            return Ok(());
         } else {
+            ensure_clipboard_text(text)?;
             spawn_clipboard_daemon(text)?;
         }
     }
 
     #[cfg(not(target_os = "linux"))]
     {
+        ensure_clipboard_text(text)?;
         write_to_clipboard(text)?;
     }
 
@@ -682,23 +667,55 @@ fn ensure_clipboard_text(text: &str) -> Result<()> {
 
 #[cfg(target_os = "linux")]
 fn spawn_clipboard_daemon(text: &str) -> Result<()> {
+    use std::io::Write;
     use std::{env, process};
 
-    process::Command::new(env::current_exe()?)
+    let mut child = process::Command::new(env::current_exe()?)
         .arg(DAEMONIZE_ARG)
-        .stdin(process::Stdio::null())
+        .stdin(process::Stdio::piped())
         .stdout(process::Stdio::null())
         .stderr(process::Stdio::null())
-        .env("CLIPBOARD_TEXT", text)
         .current_dir("/")
         .spawn()
-        .map(|_| ())
         .map_err(|e| {
             PasswordGeneratorError::ClipboardUnavailable(format!(
                 "Failed to spawn clipboard helper: {}",
                 e
             ))
-        })
+        })?;
+
+    let mut stdin = child.stdin.take().ok_or_else(|| {
+        PasswordGeneratorError::ClipboardUnavailable(
+            "Failed to open clipboard helper stdin".to_string(),
+        )
+    })?;
+    stdin.write_all(text.as_bytes()).map_err(|e| {
+        PasswordGeneratorError::ClipboardUnavailable(format!(
+            "Failed to write clipboard secret to helper: {}",
+            e
+        ))
+    })?;
+    drop(stdin);
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn clear_clipboard() -> Result<()> {
+    let mut clipboard = Clipboard::new().map_err(|e| {
+        PasswordGeneratorError::ClipboardUnavailable(format!(
+            "Unable to access clipboard backend for clear: {}",
+            e
+        ))
+    })?;
+    clipboard.clear().map_err(|e| {
+        PasswordGeneratorError::ClipboardError(format!("Failed to clear clipboard: {}", e))
+    })?;
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn clear_clipboard() -> Result<()> {
+    Ok(())
 }
 
 #[cfg(target_os = "linux")]
@@ -710,9 +727,12 @@ fn write_to_clipboard(text: &str) -> Result<()> {
         ))
     })?;
 
-    clipboard.set().wait().text(text.to_string()).map_err(|e| {
+    let mut owned = text.to_string();
+    let write_result = clipboard.set().wait().text(owned.clone()).map_err(|e| {
         PasswordGeneratorError::ClipboardError(format!("Failed to write text to clipboard: {}", e))
-    })?;
+    });
+    owned.zeroize();
+    write_result?;
 
     Ok(())
 }
@@ -723,9 +743,12 @@ fn write_to_clipboard(text: &str) -> Result<()> {
         PasswordGeneratorError::ClipboardUnavailable(format!("Unable to access clipboard: {}", e))
     })?;
 
-    clipboard.set_text(text.to_owned()).map_err(|e| {
+    let mut owned = text.to_owned();
+    let write_result = clipboard.set_text(owned.clone()).map_err(|e| {
         PasswordGeneratorError::ClipboardError(format!("Failed to write text to clipboard: {}", e))
-    })?;
+    });
+    owned.zeroize();
+    write_result?;
 
     Ok(())
 }
@@ -737,54 +760,6 @@ where
 {
     ensure_clipboard_text(text)?;
     setter(text)
-}
-
-fn print_strength_meter(data: &[String], show_password: bool) {
-    println!("\n{}", "Password Strength:".blue().bold());
-    for (i, password) in data.iter().enumerate() {
-        let strength = evaluate_password_strength(password);
-        let feedback = get_strength_feedback(strength);
-        let strength_bar = get_strength_bar(strength);
-        let password_display = if show_password {
-            password.yellow().to_string()
-        } else {
-            "(hidden)".dimmed().to_string()
-        };
-        println!(
-            "Password {}: {} {:.2} {} {}",
-            i + 1,
-            strength_bar,
-            strength,
-            feedback.color(match &*feedback {
-                "Very Weak" => "red",
-                "Weak" => "yellow",
-                "Moderate" => "blue",
-                "Strong" => "green",
-                "Very Strong" => "bright green",
-                _ => "white",
-            }),
-            password_display
-        );
-
-        if strength < 0.6 {
-            let suggestions = get_improvement_suggestions(password);
-            if !suggestions.is_empty() {
-                println!("  {}:", "Improvement suggestions".cyan());
-                for suggestion in suggestions {
-                    println!("   • {}", suggestion);
-                }
-            }
-        }
-    }
-}
-
-fn print_stats(data: &[String]) {
-    let pq = show_stats(data);
-    println!("\n{}", "Statistics:".blue().bold());
-    println!("Mean: {:.6}", pq.mean.to_string().yellow());
-    println!("Variance: {:.6}", pq.variance.to_string().yellow());
-    println!("Skewness: {:.6}", pq.skewness.to_string().yellow());
-    println!("Kurtosis: {:.6}", pq.kurtosis.to_string().yellow());
 }
 
 #[cfg(test)]
@@ -867,8 +842,8 @@ mod cli_tests {
         let config = build_config(&matches).unwrap();
         assert_eq!(config.length, 20);
         assert_eq!(config.num_passwords, 4);
-        assert!(matches.get_flag("use-words") == false);
-        assert!(matches.get_flag("pronounceable") == false);
+        assert!(!matches.get_flag("use-words"));
+        assert!(!matches.get_flag("pronounceable"));
         assert!(matches.value_source("allowed") == Some(ValueSource::DefaultValue));
         assert_eq!(config.allowed_chars.len(), 26);
         assert!(matches!(config.mode, PasswordGeneratorMode::Diceware));
@@ -876,6 +851,57 @@ mod cli_tests {
             Separator::Fixed(separator) => assert_eq!(*separator, '-'),
             _ => panic!(),
         }
+    }
+
+    #[test]
+    fn test_cli_rejects_use_words_with_pattern() {
+        let result =
+            build_cli().try_get_matches_from(["npwg", "--use-words", "--pattern", "LLDDS"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cli_policy_overrides_use_words() {
+        let matches = build_cli()
+            .try_get_matches_from(["npwg", "--use-words", "--policy", "windows-ad"])
+            .unwrap();
+        let config = build_config(&matches).unwrap();
+        assert!(matches!(config.mode, PasswordGeneratorMode::Password));
+    }
+
+    #[test]
+    fn test_cli_mutation_type_defaults_to_random() {
+        let matches = build_cli()
+            .try_get_matches_from(["npwg", "--mutate"])
+            .unwrap();
+        assert_ne!(
+            matches.value_source("mutation_type"),
+            Some(ValueSource::CommandLine)
+        );
+    }
+
+    #[test]
+    fn test_cli_mutation_type_from_command_line() {
+        let matches = build_cli()
+            .try_get_matches_from(["npwg", "--mutate", "--mutation-type", "swap"])
+            .unwrap();
+        assert_eq!(
+            matches.value_source("mutation_type"),
+            Some(ValueSource::CommandLine)
+        );
+        assert_eq!(
+            matches
+                .get_one::<MutationType>("mutation_type")
+                .map(|t| t.to_string())
+                .as_deref(),
+            Some("swap")
+        );
+    }
+
+    #[test]
+    fn test_cli_lengthen_requires_mutate() {
+        let result = build_cli().try_get_matches_from(["npwg", "--lengthen", "3"]);
+        assert!(result.is_err());
     }
 
     #[test]

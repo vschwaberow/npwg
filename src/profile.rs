@@ -3,7 +3,7 @@
 // File: src/profile.rs
 // Author: Volker Schwaberow <volker@schwaberow.de>
 
-use crate::config::{PasswordGeneratorConfig, Separator, DEFINE};
+use crate::config::{PasswordGeneratorConfig, Separator};
 use crate::error::{PasswordGeneratorError, Result};
 use dirs::{config_dir, home_dir};
 use serde::Deserialize;
@@ -121,13 +121,17 @@ pub fn apply_allowed_sets(config: &mut PasswordGeneratorConfig, allowed: &str) -
         .map(|value| value.trim())
         .filter(|value| !value.is_empty())
     {
-        if !DEFINE.iter().any(|&(name, _)| name == charset) {
-            return Err(PasswordGeneratorError::ConfigFile(format!(
-                "Unknown characterset '{}' in config",
-                charset
-            )));
+        if let Err(err) = config.add_allowed_chars(charset) {
+            match err {
+                PasswordGeneratorError::InvalidConfig(_) => {
+                    return Err(PasswordGeneratorError::ConfigFile(format!(
+                        "Unknown characterset '{}' in config",
+                        charset
+                    )));
+                }
+                other => return Err(other),
+            }
         }
-        config.add_allowed_chars(charset);
     }
     if config.allowed_chars.is_empty() {
         return Err(PasswordGeneratorError::ConfigFile(
@@ -167,7 +171,7 @@ mod tests {
             use_words: Some(true),
             separator: Some("-".to_string()),
             pronounceable: Some(false),
-            pattern: Some("LLDDS".to_string()),
+            pattern: None,
             seed: Some(99),
         };
         apply_profile(&profile, &mut config).unwrap();
@@ -175,7 +179,6 @@ mod tests {
         assert_eq!(config.num_passwords, 3);
         assert!(config.avoid_repetition);
         assert_eq!(config.seed, Some(99));
-        assert_eq!(config.pattern.as_deref(), Some("LLDDS"));
         assert!(matches!(config.mode, PasswordGeneratorMode::Diceware));
         match config.separator.as_ref().unwrap() {
             Separator::Fixed(value) => assert_eq!(*value, '-'),
