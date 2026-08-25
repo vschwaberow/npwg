@@ -92,13 +92,14 @@ async fn generate_interactive_password(term: &Term, theme: &ColorfulTheme) -> Re
     config.set_avoid_repeating(avoid_repeating);
     config.pronounceable = pronounceable;
 
-    let pattern = Input::with_theme(theme)
-        .with_prompt("Enter desired pattern or leave empty for no pattern")
-        .default("".to_string())
-        .interact_text()?;
-
-    if !pattern.is_empty() {
-        config.pattern = Some(pattern);
+    if !pronounceable {
+        let pattern = Input::with_theme(theme)
+            .with_prompt("Enter desired pattern or leave empty for no pattern")
+            .default("".to_string())
+            .interact_text()?;
+        if !pattern.is_empty() {
+            config.pattern = Some(pattern);
+        }
     }
 
     config.validate()?;
