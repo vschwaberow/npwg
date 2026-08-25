@@ -19,14 +19,12 @@ use std::f64;
 /// - 0.8-1.0: Very strong
 pub fn evaluate_password_strength(password: &str) -> f64 {
     // Calculate multiple metrics
-    let _length = password.len() as f64;
     let entropy_score = calculate_entropy(password);
     let pattern_penalty = detect_patterns(password);
     let diversity_score = calculate_diversity(password);
     let nist_compliance_score = check_nist_compliance(password);
 
     // Weighted combination of metrics (weights determined by empirical testing)
-    
 
     ((entropy_score * 0.45)
         + (diversity_score * 0.25)
@@ -46,7 +44,7 @@ pub fn calculate_entropy(password: &str) -> f64 {
         *char_counts.entry(c).or_insert(0) += 1;
     }
 
-    let len = password.len() as f64;
+    let len = password.chars().count() as f64;
     let mut entropy = 0.0;
     for count in char_counts.values() {
         let probability = (*count as f64) / len;
@@ -114,7 +112,7 @@ fn detect_patterns(password: &str) -> f64 {
 /// Calculates character diversity score based on unique character types and distribution
 fn calculate_diversity(password: &str) -> f64 {
     let mut char_types = HashSet::new();
-    let total_chars = password.len() as f64;
+    let total_chars = password.chars().count() as f64;
 
     // Count frequencies of different character types
     let mut lowercase_count = 0;
@@ -174,12 +172,12 @@ fn check_nist_compliance(password: &str) -> f64 {
     let mut score = 1.0;
 
     // NIST guideline: Minimum 8 characters
-    if password.len() < 8 {
+    if password.chars().count() < 8 {
         score *= 0.5;
     }
 
     // Check for repetition of the same character
-    if password.len() > 1 {
+    if password.chars().count() > 1 {
         let chars: Vec<char> = password.chars().collect();
         for i in 1..chars.len() {
             if chars[i] == chars[i - 1] {
@@ -370,32 +368,29 @@ fn contains_date_pattern(password: &str) -> bool {
     // Check for common date formats: MMDDYYYY, DDMMYYYY, MMDDYY, DDMMYY, etc.
     let digits: String = password.chars().filter(|c| c.is_ascii_digit()).collect();
 
-    if digits.len() >= 6
-        && (digits.len() == 6 || digits.len() == 8) {
-            // Simple validation for plausible date components
-            let possible_month = &digits[0..2];
-            let possible_day = &digits[2..4];
+    if digits.len() >= 6 && (digits.len() == 6 || digits.len() == 8) {
+        // Simple validation for plausible date components
+        let possible_month = &digits[0..2];
+        let possible_day = &digits[2..4];
 
-            let month = possible_month.parse::<u32>().unwrap_or(0);
-            let day = possible_day.parse::<u32>().unwrap_or(0);
+        let month = possible_month.parse::<u32>().unwrap_or(0);
+        let day = possible_day.parse::<u32>().unwrap_or(0);
 
-            if (1..=12).contains(&month) && (1..=31).contains(&day) {
-                return true;
-            }
-
-            // Check alternate format (day/month instead of month/day)
-            let alt_month = possible_day;
-            let alt_day = possible_month;
-
-            let alt_month_val = alt_month.parse::<u32>().unwrap_or(0);
-            let alt_day_val = alt_day.parse::<u32>().unwrap_or(0);
-
-            if (1..=12).contains(&alt_month_val)
-                && (1..=31).contains(&alt_day_val)
-            {
-                return true;
-            }
+        if (1..=12).contains(&month) && (1..=31).contains(&day) {
+            return true;
         }
+
+        // Check alternate format (day/month instead of month/day)
+        let alt_month = possible_day;
+        let alt_day = possible_month;
+
+        let alt_month_val = alt_month.parse::<u32>().unwrap_or(0);
+        let alt_day_val = alt_day.parse::<u32>().unwrap_or(0);
+
+        if (1..=12).contains(&alt_month_val) && (1..=31).contains(&alt_day_val) {
+            return true;
+        }
+    }
 
     false
 }
@@ -513,7 +508,7 @@ pub fn get_strength_feedback(score: f64) -> String {
 pub fn get_improvement_suggestions(password: &str) -> Vec<String> {
     let mut suggestions = Vec::new();
 
-    if password.len() < 12 {
+    if password.chars().count() < 12 {
         suggestions.push("Increase password length to at least 12 characters".to_string());
     }
 

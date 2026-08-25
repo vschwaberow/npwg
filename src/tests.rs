@@ -262,7 +262,23 @@ mod tests {
 }
 #[cfg(test)]
 mod strength_tests {
-    use crate::strength::{calculate_entropy, get_theoretical_char_set_size};
+    use crate::strength::{
+        calculate_entropy, get_improvement_suggestions, get_theoretical_char_set_size,
+    };
+
+    #[test]
+    fn test_strength_length_uses_char_count_for_unicode() {
+        // Four Unicode characters, eight UTF-8 bytes.
+        let unicode = "äöüß";
+        assert_eq!(unicode.chars().count(), 4);
+        assert_eq!(unicode.len(), 8);
+        let suggestions = get_improvement_suggestions(unicode);
+        assert!(
+            suggestions.iter().any(|s| s.contains("length")),
+            "short Unicode passwords must use character count, not byte length"
+        );
+        let _ = calculate_entropy(unicode);
+    }
 
     #[test]
     fn test_gcss_empty() {
