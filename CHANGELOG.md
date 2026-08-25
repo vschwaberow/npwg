@@ -38,6 +38,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 - Library password helpers reject Diceware mode and point callers at the diceware API.
 - Empty passwords are rejected for mutation; blank comma-separated CLI entries are ignored.
 - Interactive mode skips the pattern prompt when pronounceable passwords are selected.
+- Interactive password flow asks pronounceable first and only then avoid-repeating or pattern.
+- Interactive inputs reject zero length, count, and word values early.
+- Interactive mutation rejects empty passwords immediately and offers a random mutation type.
+- Interactive action errors return to the menu instead of exiting the session.
 - Interactive mutation strength and stats no longer clone secrets into temporary buffers.
 - Unknown `--allowed` character sets return an error instead of calling `process::exit`.
 - Removed unused dependencies (`chacha20`, `dashmap`, `regex`, `futures`, `rand_distr`).
