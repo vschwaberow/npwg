@@ -383,7 +383,11 @@ pub fn mutate_password(
                 }
             }
             MutationType::Insert => {
-                let new_char = allowed_chars.choose(&mut rng).copied().unwrap_or('a');
+                let new_char = allowed_chars.choose(&mut rng).copied().ok_or_else(|| {
+                    PasswordGeneratorError::InvalidConfig(
+                        "Cannot insert a character: allowed character set is empty.".to_string(),
+                    )
+                })?;
                 if let Some((start, _)) = char_byte_range(&mutated, index) {
                     mutated.insert(start, new_char);
                 } else {
