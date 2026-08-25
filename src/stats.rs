@@ -58,10 +58,26 @@ fn calculate_entropy(password: &str) -> f64 {
                 acc
             });
 
-    let length = password.len() as f64;
+    let length = password.chars().count() as f64;
 
     char_count.values().fold(0.0, |acc, &count| {
         let p = count as f64 / length;
         acc - p * p.log2()
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn entropy_uses_char_count_for_unicode() {
+        // Four characters, eight UTF-8 bytes: probabilities must use char count.
+        let unicode = "äöüß";
+        assert_eq!(unicode.chars().count(), 4);
+        assert_eq!(unicode.len(), 8);
+        let entropy = calculate_entropy(unicode);
+        // Four unique chars → Shannon entropy = 2.0 bits
+        assert!((entropy - 2.0).abs() < 1e-9, "got {}", entropy);
+    }
 }

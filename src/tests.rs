@@ -165,6 +165,14 @@ mod tests {
     }
 
     #[test]
+    fn test_show_stats_unicode_passwords() {
+        let passwords = vec!["äöüß".to_string(), "abcd".to_string()];
+        let stats = show_stats(&passwords);
+        assert!(stats.mean.is_finite());
+        assert!(stats.variance.is_finite());
+    }
+
+    #[test]
     fn test_show_stats_empty_list() {
         let passwords: Vec<String> = Vec::new();
         let stats = show_stats(&passwords);
