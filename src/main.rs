@@ -390,25 +390,13 @@ async fn handle_diceware(
     copy: bool,
 ) -> Result<()> {
     let wordlist = diceware::get_wordlist().await?;
-
     let passphrases = generate_diceware_passphrase(&wordlist, config).await?;
-    render_secrets(&passphrases, matches.get_flag("qr"))?;
-
-    if copy && !passphrases.is_empty() {
-        copy_secrets_to_clipboard(&passphrases)?;
-        println!("{}", "Passphrase(s) copied to clipboard.".bold().green());
-    }
-
-    if matches.get_flag("strength") {
-        print_strength_meter(&passphrases, !matches.get_flag("qr"));
-    }
-
-    if matches.get_flag("stats") {
-        print_stats(&passphrases);
-    }
-
-    passphrases.into_iter().for_each(|mut p| p.zeroize());
-    Ok(())
+    finish_cli_secrets(
+        passphrases,
+        matches,
+        copy,
+        "Passphrase(s) copied to clipboard.",
+    )
 }
 
 async fn handle_password(
@@ -417,23 +405,7 @@ async fn handle_password(
     copy: bool,
 ) -> Result<()> {
     let passwords = generate_passwords(config).await?;
-    render_secrets(&passwords, matches.get_flag("qr"))?;
-
-    if copy && !passwords.is_empty() {
-        copy_secrets_to_clipboard(&passwords)?;
-        println!("{}", "Password(s) copied to clipboard.".bold().green());
-    }
-
-    if matches.get_flag("strength") {
-        print_strength_meter(&passwords, !matches.get_flag("qr"));
-    }
-
-    if matches.get_flag("stats") {
-        print_stats(&passwords);
-    }
-
-    passwords.into_iter().for_each(|mut p| p.zeroize());
-    Ok(())
+    finish_cli_secrets(passwords, matches, copy, "Password(s) copied to clipboard.")
 }
 
 async fn handle_pronounceable(
@@ -442,23 +414,12 @@ async fn handle_pronounceable(
     copy: bool,
 ) -> Result<()> {
     let passwords = generate_pronounceable_passwords(config).await?;
-    render_secrets(&passwords, matches.get_flag("qr"))?;
-
-    if copy && !passwords.is_empty() {
-        copy_secrets_to_clipboard(&passwords)?;
-        println!("{}", "Passphrase(s) copied to clipboard.".bold().green());
-    }
-
-    if matches.get_flag("strength") {
-        print_strength_meter(&passwords, !matches.get_flag("qr"));
-    }
-
-    if matches.get_flag("stats") {
-        print_stats(&passwords);
-    }
-
-    passwords.into_iter().for_each(|mut p| p.zeroize());
-    Ok(())
+    finish_cli_secrets(
+        passwords,
+        matches,
+        copy,
+        "Passphrase(s) copied to clipboard.",
+    )
 }
 
 async fn handle_deterministic(
@@ -517,23 +478,7 @@ async fn handle_deterministic(
         passwords.push(password);
     }
 
-    render_secrets(&passwords, matches.get_flag("qr"))?;
-
-    if copy && !passwords.is_empty() {
-        copy_secrets_to_clipboard(&passwords)?;
-        println!("{}", "Password(s) copied to clipboard.".bold().green());
-    }
-
-    if matches.get_flag("strength") {
-        print_strength_meter(&passwords, !matches.get_flag("qr"));
-    }
-
-    if matches.get_flag("stats") {
-        print_stats(&passwords);
-    }
-
-    passwords.into_iter().for_each(|mut p| p.zeroize());
-    Ok(())
+    finish_cli_secrets(passwords, matches, copy, "Password(s) copied to clipboard.")
 }
 
 async fn handle_mutation(
@@ -604,6 +549,31 @@ async fn handle_mutation(
     }
 
     mutated_passwords.into_iter().for_each(|mut p| p.zeroize());
+    Ok(())
+}
+
+fn finish_cli_secrets(
+    mut secrets: Vec<String>,
+    matches: &clap::ArgMatches,
+    copy: bool,
+    copy_label: &str,
+) -> Result<()> {
+    render_secrets(&secrets, matches.get_flag("qr"))?;
+
+    if copy && !secrets.is_empty() {
+        copy_secrets_to_clipboard(&secrets)?;
+        println!("{}", copy_label.bold().green());
+    }
+
+    if matches.get_flag("strength") {
+        print_strength_meter(&secrets, !matches.get_flag("qr"));
+    }
+
+    if matches.get_flag("stats") {
+        print_stats(&secrets);
+    }
+
+    secrets.iter_mut().for_each(|p| p.zeroize());
     Ok(())
 }
 
