@@ -26,6 +26,11 @@ pub use generator::{
 pub use stats::{show_stats, PasswordQuality};
 
 pub async fn generate_password_with_config(config: &PasswordGeneratorConfig) -> Result<String> {
+    if matches!(config.mode, PasswordGeneratorMode::Diceware) {
+        return Err(PasswordGeneratorError::InvalidConfig(
+            "Diceware mode requires generate_diceware_passphrase_with_config.".to_string(),
+        ));
+    }
     if config.pronounceable {
         generate_pronounceable_password(config).await
     } else {
@@ -36,6 +41,11 @@ pub async fn generate_password_with_config(config: &PasswordGeneratorConfig) -> 
 pub async fn generate_passwords_with_config(
     config: &PasswordGeneratorConfig,
 ) -> Result<Vec<String>> {
+    if matches!(config.mode, PasswordGeneratorMode::Diceware) {
+        return Err(PasswordGeneratorError::InvalidConfig(
+            "Diceware mode requires generate_diceware_passphrase_with_config.".to_string(),
+        ));
+    }
     if config.pronounceable {
         generate_pronounceable_passwords(config).await
     } else {
@@ -48,4 +58,25 @@ pub async fn generate_diceware_passphrase_with_config(
     config: &PasswordGeneratorConfig,
 ) -> Result<Vec<String>> {
     generate_diceware_passphrase(wordlist, config).await
+}
+
+#[cfg(test)]
+mod lib_api_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn generate_password_with_config_rejects_diceware() {
+        let mut config = PasswordGeneratorConfig::new();
+        config.set_use_words(true);
+        let err = generate_password_with_config(&config).await.unwrap_err();
+        assert!(matches!(err, PasswordGeneratorError::InvalidConfig(_)));
+    }
+
+    #[tokio::test]
+    async fn generate_passwords_with_config_rejects_diceware() {
+        let mut config = PasswordGeneratorConfig::new();
+        config.set_use_words(true);
+        let err = generate_passwords_with_config(&config).await.unwrap_err();
+        assert!(matches!(err, PasswordGeneratorError::InvalidConfig(_)));
+    }
 }
