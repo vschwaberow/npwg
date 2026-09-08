@@ -29,7 +29,9 @@ use dialoguer::{Input, Password};
 use error::{PasswordGeneratorError, Result};
 use generator::{
     effective_allowed_chars, generate_deterministic_password, generate_diceware_passphrase,
-    generate_passwords, generate_pronounceable_passwords, mutate_password, MutationType,
+    generate_diceware_passphrase_with_min_entropy, generate_passwords,
+    generate_passwords_with_min_entropy, generate_pronounceable_passwords, mutate_password,
+    MutationType,
 };
 use policy::{apply_policy, PolicyName};
 use profile::{apply_allowed_sets, apply_profile, load_user_profiles, parse_separator};
@@ -257,6 +259,14 @@ fn build_cli() -> Command {
                 .required(false),
         )
         .arg(
+            Arg::new("min-entropy")
+                .long("min-entropy")
+                .value_name("BITS")
+                .help("Regenerate until estimated entropy reaches at least BITS (character-class heuristic)")
+                .value_parser(value_parser!(f64))
+                .conflicts_with_all(["seed", "deterministic", "mutate"]),
+        )
+        .arg(
             Arg::new("seed")
                 .short('s')
                 .long("seed")
@@ -276,6 +286,7 @@ fn build_cli() -> Command {
                     "mutate",
                     "seed",
                     "pattern",
+                    "min-entropy",
                 ]),
         )
         .arg(
@@ -384,13 +395,22 @@ fn build_config(matches: &clap::ArgMatches) -> Result<PasswordGeneratorConfig> {
     Ok(config)
 }
 
+fn min_entropy_bits(matches: &clap::ArgMatches) -> Option<f64> {
+    matches.get_one::<f64>("min-entropy").copied()
+}
+
 async fn handle_diceware(
     config: &PasswordGeneratorConfig,
     matches: &clap::ArgMatches,
     copy: bool,
 ) -> Result<()> {
     let wordlist = diceware::get_wordlist().await?;
-    let passphrases = generate_diceware_passphrase(&wordlist, config).await?;
+    let passphrases = match min_entropy_bits(matches) {
+        Some(min_bits) => {
+            generate_diceware_passphrase_with_min_entropy(&wordlist, config, min_bits).await?
+        }
+        None => generate_diceware_passphrase(&wordlist, config).await?,
+    };
     finish_cli_secrets(
         passphrases,
         matches,
@@ -404,7 +424,10 @@ async fn handle_password(
     matches: &clap::ArgMatches,
     copy: bool,
 ) -> Result<()> {
-    let passwords = generate_passwords(config).await?;
+    let passwords = match min_entropy_bits(matches) {
+        Some(min_bits) => generate_passwords_with_min_entropy(config, min_bits).await?,
+        None => generate_passwords(config).await?,
+    };
     finish_cli_secrets(passwords, matches, copy, "Password(s) copied to clipboard.")
 }
 
@@ -413,7 +436,10 @@ async fn handle_pronounceable(
     matches: &clap::ArgMatches,
     copy: bool,
 ) -> Result<()> {
-    let passwords = generate_pronounceable_passwords(config).await?;
+    let passwords = match min_entropy_bits(matches) {
+        Some(min_bits) => generate_passwords_with_min_entropy(config, min_bits).await?,
+        None => generate_pronounceable_passwords(config).await?,
+    };
     finish_cli_secrets(
         passwords,
         matches,
@@ -918,5 +944,19 @@ mod cli_tests {
             .allowed_chars
             .iter()
             .any(|c| !c.is_ascii_alphanumeric()));
+    }
+    #[test]
+    fn test_cli_parses_min_entropy() {
+        let matches = build_cli()
+            .try_get_matches_from(["npwg", "--min-entropy", "80", "--length", "20"])
+            .unwrap();
+        assert_eq!(matches.get_one::<f64>("min-entropy").copied(), Some(80.0));
+    }
+
+    #[test]
+    fn test_cli_min_entropy_conflicts_with_seed() {
+        let result =
+            build_cli().try_get_matches_from(["npwg", "--min-entropy", "80", "--seed", "1"]);
+        assert!(result.is_err());
     }
 }

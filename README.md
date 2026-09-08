@@ -12,6 +12,7 @@ npwg is a secure password generator written in Rust. With npwg, you can easily g
 - Avoid repeating characters in passwords
 - Display statistics about the generated passwords
 - Show a local heuristic strength estimate for generated passwords (not NIST or zxcvbn)
+- Enforce a minimum estimated entropy by regenerating until the threshold is met
 - Interactive mode for easy password generation
 - Deterministic mode for password derivation from a master password and service
 
@@ -57,6 +58,7 @@ npwg [OPTIONS]
 - `--avoid-repeating`: Avoid consecutive repeating characters in the password
 - `--stats`: Show statistics about the generated passwords
 - `--strength`: Show a local heuristic strength estimate (not a formal compliance check)
+- `--min-entropy <BITS>`: Regenerate until estimated entropy reaches at least BITS (conflicts with `--seed`, `--deterministic`, `--mutate`)
 - `-a, --allowed <CHARS>`: Sets the allowed characters [default: allprint]
 - `--use-words`: Use diceware words instead of characters (EFF large wordlist, SHA-256 pinned)
 - `-i, --interactive`: Start interactive console mode
@@ -111,6 +113,12 @@ Inspect entropy and statistics in one pass:
 
 ```sh
 npwg --strength --stats
+```
+
+Require at least 80 bits of estimated entropy (regenerates as needed):
+
+```sh
+npwg --min-entropy 80 --length 20
 ```
 
 Copy freshly generated secrets to the clipboard (on Linux the helper reads stdin, holds for 45 seconds, then clears and exits):

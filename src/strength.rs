@@ -71,6 +71,63 @@ pub fn calculate_entropy(password: &str) -> f64 {
     weighted_score.clamp(0.0, 1.0)
 }
 
+/// Estimated entropy in bits: character length times log2 of the
+/// theoretical character-set size implied by character classes present.
+pub fn estimate_entropy_bits(password: &str) -> f64 {
+    let length = password.chars().count() as f64;
+    if length == 0.0 {
+        return 0.0;
+    }
+    let charset_size = get_theoretical_char_set_size(password) as f64;
+    if charset_size <= 1.0 {
+        return 0.0;
+    }
+    length * charset_size.log2()
+}
+
+/// Upper-bound entropy for a given length using character classes present in `probe`.
+pub fn max_entropy_bits_for_probe(length: usize, probe: &str) -> f64 {
+    if length == 0 || probe.is_empty() {
+        return 0.0;
+    }
+    let charset_size = get_theoretical_char_set_size(probe) as f64;
+    if charset_size <= 1.0 {
+        return 0.0;
+    }
+    length as f64 * charset_size.log2()
+}
+
+/// Builds a short probe string containing one character per class present in `allowed`.
+pub fn charset_probe(allowed: &[char]) -> String {
+    let mut probe = String::new();
+    if let Some(&c) = allowed.iter().find(|c| c.is_ascii_lowercase()) {
+        probe.push(c);
+    }
+    if let Some(&c) = allowed.iter().find(|c| c.is_ascii_uppercase()) {
+        probe.push(c);
+    }
+    if let Some(&c) = allowed.iter().find(|c| c.is_ascii_digit()) {
+        probe.push(c);
+    }
+    if let Some(&c) = allowed.iter().find(|c| c.is_ascii_punctuation()) {
+        probe.push(c);
+    }
+    if let Some(&c) = allowed.iter().find(|c| {
+        !c.is_ascii_lowercase()
+            && !c.is_ascii_uppercase()
+            && !c.is_ascii_digit()
+            && !c.is_ascii_punctuation()
+    }) {
+        probe.push(c);
+    }
+    if probe.is_empty() {
+        if let Some(&c) = allowed.first() {
+            probe.push(c);
+        }
+    }
+    probe
+}
+
 /// Detects common patterns in passwords and returns a penalty score
 /// Lower score means more patterns detected (worse password)
 fn detect_patterns(password: &str) -> f64 {
@@ -615,5 +672,37 @@ pub fn print_strength_meter<S: AsRef<str>>(data: &[S], show_password: bool) {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn estimate_entropy_bits_scales_with_length_and_classes() {
+        let digits = "1234567890123456";
+        let mixed = "Abcdefghijklm12!";
+        let digit_bits = estimate_entropy_bits(digits);
+        let mixed_bits = estimate_entropy_bits(mixed);
+        assert!((digit_bits - 16.0 * 10f64.log2()).abs() < 1e-9);
+        assert!(mixed_bits > digit_bits);
+    }
+
+    #[test]
+    fn max_entropy_bits_for_probe_matches_estimate_model() {
+        let probe = "aA1!";
+        let bits = max_entropy_bits_for_probe(16, probe);
+        assert!((bits - 16.0 * (get_theoretical_char_set_size(probe) as f64).log2()).abs() < 1e-9);
+    }
+
+    #[test]
+    fn charset_probe_covers_available_classes() {
+        let allowed: Vec<char> = "aB3!".chars().collect();
+        let probe = charset_probe(&allowed);
+        assert!(probe.contains('a'));
+        assert!(probe.contains('B'));
+        assert!(probe.contains('3'));
+        assert!(probe.contains('!'));
     }
 }
