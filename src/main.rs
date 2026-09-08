@@ -24,6 +24,11 @@ use arboard::Clipboard;
 #[cfg(target_os = "linux")]
 use arboard::SetExtLinux;
 use clap::{parser::ValueSource, value_parser, Arg, ArgAction, ArgGroup, Command};
+use clap_complete::{
+    generate,
+    shells::{Bash, Fish, Zsh},
+    Shell,
+};
 use colored::*;
 use config::{PasswordGeneratorConfig, PasswordGeneratorMode, Separator};
 use dialoguer::{Input, Password};
@@ -58,6 +63,22 @@ async fn main() -> Result<()> {
         }
     }
     let matches = build_cli().get_matches();
+
+    if let Some(shell) = matches.get_one::<Shell>("completions").copied() {
+        let mut cmd = build_cli();
+        let name = cmd.get_name().to_string();
+        match shell {
+            Shell::Bash => generate(Bash, &mut cmd, name, &mut std::io::stdout()),
+            Shell::Zsh => generate(Zsh, &mut cmd, name, &mut std::io::stdout()),
+            Shell::Fish => generate(Fish, &mut cmd, name, &mut std::io::stdout()),
+            _ => {
+                return Err(PasswordGeneratorError::InvalidConfig(
+                    "Supported shells for --completions: bash, zsh, fish.".to_string(),
+                ));
+            }
+        }
+        return Ok(());
+    }
 
     if matches.get_flag("interactive") {
         return interactive::interactive_mode().await;
@@ -364,6 +385,13 @@ fn build_cli() -> Command {
                 .default_value("1")
                 .value_parser(value_parser!(u32))
                 .requires("deterministic"),
+        )
+        .arg(
+            Arg::new("completions")
+                .long("completions")
+                .value_name("SHELL")
+                .help("Print shell completion script to stdout and exit (bash, zsh, fish)")
+                .value_parser(value_parser!(Shell)),
         )
 }
 
@@ -1068,6 +1096,17 @@ mod cli_tests {
             .iter()
             .any(|c| !c.is_ascii_alphanumeric()));
     }
+    #[test]
+    fn test_cli_parses_completions_shell() {
+        let matches = build_cli()
+            .try_get_matches_from(["npwg", "--completions", "bash"])
+            .unwrap();
+        assert_eq!(
+            matches.get_one::<Shell>("completions").copied(),
+            Some(Shell::Bash)
+        );
+    }
+
     #[test]
     fn test_cli_json_conflicts_with_null() {
         let result = build_cli().try_get_matches_from(["npwg", "--json", "--null"]);
