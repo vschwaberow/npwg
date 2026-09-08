@@ -63,8 +63,13 @@ npwg [OPTIONS]
 - `--stats`: Show statistics about the generated passwords
 - `--strength`: Show a local heuristic strength estimate (not a formal compliance check)
 - `--min-entropy <BITS>`: Regenerate until estimated entropy reaches at least BITS (conflicts with `--seed`, `--deterministic`, `--mutate`)
+- `--no-ambiguous`: Exclude ambiguous characters (`0 O o 1 l I |`) from the character pool
+- `--check-pwned`: Reject secrets found in Have I Been Pwned (SHA-1 prefix only)
 - `-a, --allowed <CHARS>`: Sets the allowed characters [default: allprint]
 - `--use-words`: Use diceware words instead of characters (EFF wordlists, SHA-256 pinned)
+- `--require <CLASSES>`: With `--use-words`, append required classes (`digit`, `symbol`)
+- `--wordlist-preset <PRESET>`: Diceware preset (`eff-large`, `eff-short`; default `eff-large`)
+- `--wordlist <PATH>`: Custom diceware wordlist path (tab-separated or plain words)
 - `-i, --interactive`: Start interactive console mode
 - `--config <PATH>`: Path to a configuration file with defaults and profiles
 - `--profile <NAME>`: Name of a profile from the configuration file
