@@ -11,6 +11,7 @@ mod generator;
 mod interactive;
 mod policy;
 mod profile;
+mod pwned;
 mod stats;
 mod strength;
 
@@ -139,9 +140,15 @@ fn build_cli() -> Command {
                 .help("Show strength meter for the generated passwords")
                 .action(ArgAction::SetTrue),
         )
+        .arg(
+            Arg::new("check-pwned")
+                .long("check-pwned")
+                .help("Reject secrets found in Have I Been Pwned (k-anonymity range API)")
+                .action(ArgAction::SetTrue),
+        )
         .group(
             ArgGroup::new("output_options")
-                .args(["stats", "strength"])
+                .args(["stats", "strength", "check-pwned"])
                 .multiple(true),
         )
         .arg(
@@ -467,6 +474,7 @@ async fn handle_diceware(
         copy,
         "Passphrase(s) copied to clipboard.",
     )
+    .await
 }
 
 async fn handle_password(
@@ -478,7 +486,7 @@ async fn handle_password(
         Some(min_bits) => generate_passwords_with_min_entropy(config, min_bits).await?,
         None => generate_passwords(config).await?,
     };
-    finish_cli_secrets(passwords, matches, copy, "Password(s) copied to clipboard.")
+    finish_cli_secrets(passwords, matches, copy, "Password(s) copied to clipboard.").await
 }
 
 async fn handle_pronounceable(
@@ -496,6 +504,7 @@ async fn handle_pronounceable(
         copy,
         "Passphrase(s) copied to clipboard.",
     )
+    .await
 }
 
 async fn handle_deterministic(
@@ -554,7 +563,7 @@ async fn handle_deterministic(
         passwords.push(password);
     }
 
-    finish_cli_secrets(passwords, matches, copy, "Password(s) copied to clipboard.")
+    finish_cli_secrets(passwords, matches, copy, "Password(s) copied to clipboard.").await
 }
 
 async fn handle_mutation(
@@ -628,12 +637,16 @@ async fn handle_mutation(
     Ok(())
 }
 
-fn finish_cli_secrets(
+async fn finish_cli_secrets(
     mut secrets: Vec<String>,
     matches: &clap::ArgMatches,
     copy: bool,
     copy_label: &str,
 ) -> Result<()> {
+    if matches.get_flag("check-pwned") {
+        pwned::ensure_secrets_not_pwned(&secrets).await?;
+    }
+
     render_secrets(&secrets, matches.get_flag("qr"))?;
 
     if copy && !secrets.is_empty() {
@@ -995,6 +1008,14 @@ mod cli_tests {
             .iter()
             .any(|c| !c.is_ascii_alphanumeric()));
     }
+    #[test]
+    fn test_cli_parses_check_pwned() {
+        let matches = build_cli()
+            .try_get_matches_from(["npwg", "--check-pwned"])
+            .unwrap();
+        assert!(matches.get_flag("check-pwned"));
+    }
+
     #[test]
     fn test_cli_wordlist_requires_use_words() {
         let result = build_cli().try_get_matches_from(["npwg", "--wordlist", "/tmp/x"]);
