@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 - `--clear-after` clears the TTY after displaying secrets.
 ### Changed
 - Diceware presets load from embedded assets; no network download for `eff-large` / `eff-short`.
+- Upgraded dependencies (`rand` 0.9→0.10, `argon2` 0.5→0.6, `dirs` 6→7, plus `zeroize`, `thiserror`, `console`, `clap`, `tokio`, `serde`, `arboard`).
 
 ## [0.5.2]
 ### Fixed
