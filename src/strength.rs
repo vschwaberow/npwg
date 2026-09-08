@@ -636,7 +636,18 @@ pub fn get_strength_bar(score: f64) -> String {
 }
 
 pub fn print_strength_meter<S: AsRef<str>>(data: &[S], show_password: bool) {
-    println!("\n{}", "Password Strength:".blue().bold());
+    print_strength_meter_to(data, show_password, false);
+}
+
+pub fn print_strength_meter_to<S: AsRef<str>>(data: &[S], show_password: bool, to_stderr: bool) {
+    let emit = |line: String| {
+        if to_stderr {
+            eprintln!("{}", line);
+        } else {
+            println!("{}", line);
+        }
+    };
+    emit(format!("\n{}", "Password Strength:".blue().bold()));
     for (i, password) in data.iter().enumerate() {
         let password = password.as_ref();
         let strength = evaluate_password_strength(password);
@@ -647,7 +658,7 @@ pub fn print_strength_meter<S: AsRef<str>>(data: &[S], show_password: bool) {
         } else {
             "(hidden)".dimmed().to_string()
         };
-        println!(
+        emit(format!(
             "Password {}: {} {:.2} {} {}",
             i + 1,
             strength_bar,
@@ -661,14 +672,14 @@ pub fn print_strength_meter<S: AsRef<str>>(data: &[S], show_password: bool) {
                 _ => "white",
             }),
             password_display
-        );
+        ));
 
         if strength < 0.6 {
             let suggestions = get_improvement_suggestions(password);
             if !suggestions.is_empty() {
-                println!("  {}:", "Improvement suggestions".cyan());
+                emit(format!("  {}:", "Improvement suggestions".cyan()));
                 for suggestion in suggestions {
-                    println!("   • {}", suggestion);
+                    emit(format!("   • {}", suggestion));
                 }
             }
         }

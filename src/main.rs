@@ -24,21 +24,26 @@ use arboard::Clipboard;
 #[cfg(target_os = "linux")]
 use arboard::SetExtLinux;
 use clap::{parser::ValueSource, value_parser, Arg, ArgAction, ArgGroup, Command};
+use clap_complete::{
+    generate,
+    shells::{Bash, Fish, Zsh},
+    Shell,
+};
 use colored::*;
 use config::{PasswordGeneratorConfig, PasswordGeneratorMode, Separator};
 use dialoguer::{Input, Password};
 use error::{PasswordGeneratorError, Result};
 use generator::{
     effective_allowed_chars, generate_deterministic_password, generate_diceware_passphrase,
-    generate_diceware_passphrase_with_min_entropy, generate_passwords,
-    generate_passwords_with_min_entropy, generate_pronounceable_passwords, mutate_password,
-    MutationType,
+    generate_diceware_passphrase_with_min_entropy, generate_passwords_with_min_entropy,
+    generate_passwords_with_min_entropy_and_wordlist, generate_passwords_with_wordlist,
+    generate_pronounceable_passwords, mutate_password, MutationType,
 };
 use policy::{apply_policy, PolicyName};
 use profile::{apply_allowed_sets, apply_profile, load_user_profiles, parse_separator};
 use qrcodegen::{QrCode, QrCodeEcc};
-use stats::print_stats;
-use strength::print_strength_meter;
+use stats::{print_stats, print_stats_to};
+use strength::{print_strength_meter, print_strength_meter_to};
 use zeroize::{Zeroize, Zeroizing};
 
 impl From<arboard::Error> for PasswordGeneratorError {
@@ -58,6 +63,22 @@ async fn main() -> Result<()> {
         }
     }
     let matches = build_cli().get_matches();
+
+    if let Some(shell) = matches.get_one::<Shell>("completions").copied() {
+        let mut cmd = build_cli();
+        let name = cmd.get_name().to_string();
+        match shell {
+            Shell::Bash => generate(Bash, &mut cmd, name, &mut std::io::stdout()),
+            Shell::Zsh => generate(Zsh, &mut cmd, name, &mut std::io::stdout()),
+            Shell::Fish => generate(Fish, &mut cmd, name, &mut std::io::stdout()),
+            _ => {
+                return Err(PasswordGeneratorError::InvalidConfig(
+                    "Supported shells for --completions: bash, zsh, fish.".to_string(),
+                ));
+            }
+        }
+        return Ok(());
+    }
 
     if matches.get_flag("interactive") {
         return interactive::interactive_mode().await;
@@ -209,15 +230,13 @@ fn build_cli() -> Command {
             Arg::new("wordlist-preset")
                 .long("wordlist-preset")
                 .value_name("PRESET")
-                .help("Built-in diceware wordlist preset (eff-large, eff-short) [default: eff-large]")
-                .requires("use-words"),
+                .help("Built-in diceware wordlist preset (eff-large, eff-short) [default: eff-large]"),
         )
         .arg(
             Arg::new("wordlist")
                 .long("wordlist")
                 .value_name("PATH")
-                .help("Path to a custom diceware wordlist (tab or plain words)")
-                .requires("use-words"),
+                .help("Path to a custom diceware wordlist (tab or plain words)"),
         )
         .arg(
             Arg::new("pronounceable")
@@ -265,13 +284,36 @@ fn build_cli() -> Command {
             Arg::new("qr")
                 .long("qr")
                 .help("Print as QR code")
-                .action(ArgAction::SetTrue),
+                .action(ArgAction::SetTrue)
+                .conflicts_with_all(["json", "null"]),
+        )
+        .arg(
+            Arg::new("json")
+                .long("json")
+                .help("Print secrets as a JSON array on stdout")
+                .action(ArgAction::SetTrue)
+                .conflicts_with_all(["null", "qr"]),
+        )
+        .arg(
+            Arg::new("null")
+                .long("null")
+                .help("Print secrets NUL-separated on stdout")
+                .action(ArgAction::SetTrue)
+                .conflicts_with_all(["json", "qr"]),
+        )
+        .arg(
+            Arg::new("clear-after")
+                .long("clear-after")
+                .value_name("SECS")
+                .help("Clear the terminal after SECS when printing secrets to a TTY")
+                .value_parser(value_parser!(u64))
+                .conflicts_with_all(["json", "null", "qr"]),
         )
         .arg(
             Arg::new("pattern")
                 .short('p')
                 .long("pattern")
-                .help("Pattern for password generation (e.g., LLDDS)")
+                .help("Pattern for password generation (e.g., LLDDS or {L:4}{D:2}-{word})")
                 .value_parser(value_parser!(String))
                 .conflicts_with_all(["pronounceable", "use-words"]),
         )
@@ -350,6 +392,13 @@ fn build_cli() -> Command {
                 .value_parser(value_parser!(u32))
                 .requires("deterministic"),
         )
+        .arg(
+            Arg::new("completions")
+                .long("completions")
+                .value_name("SHELL")
+                .help("Print shell completion script to stdout and exit (bash, zsh, fish)")
+                .value_parser(value_parser!(Shell)),
+        )
 }
 
 fn build_config(matches: &clap::ArgMatches) -> Result<PasswordGeneratorConfig> {
@@ -411,22 +460,30 @@ fn build_config(matches: &clap::ArgMatches) -> Result<PasswordGeneratorConfig> {
 
     if let Some(policy) = matches.get_one::<PolicyName>("policy").copied() {
         let details = apply_policy(policy, &mut config)?;
-        println!(
+        let policy_msg = format!(
             "Applying policy {} ({}). Minimum length: {} characters, recommended entropy ≈ {:.1} bits.",
             details.label.green(),
             details.description,
             details.minimum_length,
             details.recommended_entropy_bits
         );
+        if machine_output_mode(matches) {
+            eprintln!("{}", policy_msg);
+        } else {
+            println!("{}", policy_msg);
+        }
         if config.length < details.minimum_length {
-            println!(
-                "{}",
-                format!(
-                    "Policy requires at least {} characters; clamping requested length to {}.",
-                    details.minimum_length, details.minimum_length
-                )
-                .yellow()
-            );
+            let clamp_msg = format!(
+                "Policy requires at least {} characters; clamping requested length to {}.",
+                details.minimum_length, details.minimum_length
+            )
+            .yellow()
+            .to_string();
+            if machine_output_mode(matches) {
+                eprintln!("{}", clamp_msg);
+            } else {
+                println!("{}", clamp_msg);
+            }
             config.length = details.minimum_length;
         }
     }
@@ -482,11 +539,33 @@ async fn handle_password(
     matches: &clap::ArgMatches,
     copy: bool,
 ) -> Result<()> {
+    let pattern_words = load_pattern_wordlist(config, matches).await?;
     let passwords = match min_entropy_bits(matches) {
-        Some(min_bits) => generate_passwords_with_min_entropy(config, min_bits).await?,
-        None => generate_passwords(config).await?,
+        Some(min_bits) => {
+            generate_passwords_with_min_entropy_and_wordlist(
+                config,
+                min_bits,
+                pattern_words.as_deref(),
+            )
+            .await?
+        }
+        None => generate_passwords_with_wordlist(config, pattern_words.as_deref()).await?,
     };
     finish_cli_secrets(passwords, matches, copy, "Password(s) copied to clipboard.").await
+}
+
+async fn load_pattern_wordlist(
+    config: &PasswordGeneratorConfig,
+    matches: &clap::ArgMatches,
+) -> Result<Option<Vec<String>>> {
+    let Some(pattern) = config.pattern.as_deref() else {
+        return Ok(None);
+    };
+    if !generator::pattern_needs_wordlist(pattern) {
+        return Ok(None);
+    }
+    let source = resolve_wordlist_source(matches)?;
+    Ok(Some(diceware::get_wordlist(&source).await?))
 }
 
 async fn handle_pronounceable(
@@ -637,6 +716,40 @@ async fn handle_mutation(
     Ok(())
 }
 
+fn machine_output_mode(matches: &clap::ArgMatches) -> bool {
+    matches.get_flag("json") || matches.get_flag("null")
+}
+
+fn should_clear_after_display(matches: &clap::ArgMatches, stdout_is_tty: bool) -> Option<u64> {
+    if !stdout_is_tty {
+        return None;
+    }
+    if machine_output_mode(matches) || matches.get_flag("qr") {
+        return None;
+    }
+    matches.get_one::<u64>("clear-after").copied()
+}
+
+fn clear_terminal_screen() {
+    print!("\x1b[2J\x1b[H");
+    let _ = std::io::stdout().flush();
+}
+
+fn format_secrets_json(secrets: &[String]) -> Result<String> {
+    serde_json::to_string(secrets).map_err(|e| {
+        PasswordGeneratorError::InvalidConfig(format!("Failed to encode JSON output: {}", e))
+    })
+}
+
+fn format_secrets_null(secrets: &[String]) -> Vec<u8> {
+    let mut out = Vec::new();
+    for secret in secrets {
+        out.extend_from_slice(secret.as_bytes());
+        out.push(0);
+    }
+    out
+}
+
 async fn finish_cli_secrets(
     mut secrets: Vec<String>,
     matches: &clap::ArgMatches,
@@ -647,27 +760,53 @@ async fn finish_cli_secrets(
         pwned::ensure_secrets_not_pwned(&secrets).await?;
     }
 
-    render_secrets(&secrets, matches.get_flag("qr"))?;
+    let machine = machine_output_mode(matches);
+    render_secrets(
+        &secrets,
+        matches.get_flag("qr"),
+        matches.get_flag("json"),
+        matches.get_flag("null"),
+    )?;
+
+    if let Some(secs) = should_clear_after_display(
+        matches,
+        std::io::IsTerminal::is_terminal(&std::io::stdout()),
+    ) {
+        std::thread::sleep(std::time::Duration::from_secs(secs));
+        clear_terminal_screen();
+    }
 
     if copy && !secrets.is_empty() {
         copy_secrets_to_clipboard(&secrets)?;
-        println!("{}", copy_label.bold().green());
+        let msg = format!("{}", copy_label.bold().green());
+        if machine {
+            eprintln!("{}", msg);
+        } else {
+            println!("{}", msg);
+        }
     }
 
     if matches.get_flag("strength") {
-        print_strength_meter(&secrets, !matches.get_flag("qr"));
+        print_strength_meter_to(&secrets, !matches.get_flag("qr") && !machine, machine);
     }
 
     if matches.get_flag("stats") {
-        print_stats(&secrets);
+        print_stats_to(&secrets, machine);
     }
 
     secrets.iter_mut().for_each(|p| p.zeroize());
     Ok(())
 }
 
-fn render_secrets(secrets: &[String], as_qr: bool) -> Result<()> {
-    if as_qr {
+fn render_secrets(secrets: &[String], as_qr: bool, as_json: bool, as_null: bool) -> Result<()> {
+    if as_json {
+        let payload = format_secrets_json(secrets)?;
+        println!("{}", payload);
+    } else if as_null {
+        let payload = format_secrets_null(secrets);
+        let mut stdout = std::io::stdout().lock();
+        stdout.write_all(&payload)?;
+    } else if as_qr {
         for secret in secrets {
             print_qr(secret)?;
         }
@@ -1009,6 +1148,56 @@ mod cli_tests {
             .any(|c| !c.is_ascii_alphanumeric()));
     }
     #[test]
+    fn test_cli_clear_after_conflicts_with_json() {
+        let result = build_cli().try_get_matches_from(["npwg", "--clear-after", "5", "--json"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_should_clear_after_display_requires_tty() {
+        let matches = build_cli()
+            .try_get_matches_from(["npwg", "--clear-after", "3"])
+            .unwrap();
+        assert_eq!(should_clear_after_display(&matches, false), None);
+        assert_eq!(should_clear_after_display(&matches, true), Some(3));
+    }
+
+    #[test]
+    fn test_cli_parses_completions_shell() {
+        let matches = build_cli()
+            .try_get_matches_from(["npwg", "--completions", "bash"])
+            .unwrap();
+        assert_eq!(
+            matches.get_one::<Shell>("completions").copied(),
+            Some(Shell::Bash)
+        );
+    }
+
+    #[test]
+    fn test_cli_json_conflicts_with_null() {
+        let result = build_cli().try_get_matches_from(["npwg", "--json", "--null"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cli_json_conflicts_with_qr() {
+        let result = build_cli().try_get_matches_from(["npwg", "--json", "--qr"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_format_secrets_json_array() {
+        let payload = format_secrets_json(&["a".into(), "b\"c".into()]).unwrap();
+        assert_eq!(payload, r#"["a","b\"c"]"#);
+    }
+
+    #[test]
+    fn test_format_secrets_null_separated() {
+        let payload = format_secrets_null(&["one".into(), "two".into()]);
+        assert_eq!(payload, b"one\0two\0");
+    }
+
+    #[test]
     fn test_cli_parses_check_pwned() {
         let matches = build_cli()
             .try_get_matches_from(["npwg", "--check-pwned"])
@@ -1017,9 +1206,14 @@ mod cli_tests {
     }
 
     #[test]
-    fn test_cli_wordlist_requires_use_words() {
-        let result = build_cli().try_get_matches_from(["npwg", "--wordlist", "/tmp/x"]);
-        assert!(result.is_err());
+    fn test_cli_parses_wordlist_without_use_words() {
+        let matches = build_cli()
+            .try_get_matches_from(["npwg", "--wordlist", "/tmp/x"])
+            .unwrap();
+        assert_eq!(
+            matches.get_one::<String>("wordlist").map(String::as_str),
+            Some("/tmp/x")
+        );
     }
 
     #[test]

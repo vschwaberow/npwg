@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 
 ## [Unreleased]
 ### Added
+- `--json` and `--null` machine-readable secret output.
+- `--completions` generates bash/zsh/fish completion scripts.
+- Embedded EFF large/short wordlists for offline diceware.
+- Rich patterns (`{L:n}`, `{D:n}`, `{S:n}`, `{word}`, literals).
+- `--clear-after` clears the TTY after displaying secrets.
 - `--no-ambiguous` excludes lookalike characters from the generation pool.
 - `--require digit,symbol` appends required character classes to diceware passphrases.
 - `--wordlist-preset eff-large|eff-short` and `--wordlist <PATH>` for diceware wordlist selection.

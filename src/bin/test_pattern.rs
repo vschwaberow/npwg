@@ -6,7 +6,7 @@ fn main() {
     let length = 10;
     let seed = None;
 
-    match generate_with_pattern(pattern, &available_chars, length, seed, false) {
+    match generate_with_pattern(pattern, &available_chars, length, seed, false, None) {
         Ok(_) => {
             eprintln!("Expected pattern error for unfulfillable LDLS on abcdefg");
             std::process::exit(1);

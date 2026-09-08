@@ -430,7 +430,7 @@ mod pattern_tests {
         let length = 10;
         let seed = None;
 
-        let result = generate_with_pattern(pattern, &available_chars, length, seed, false);
+        let result = generate_with_pattern(pattern, &available_chars, length, seed, false, None);
         assert!(result.is_err());
     }
 }

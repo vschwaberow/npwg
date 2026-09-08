@@ -6,15 +6,13 @@
 
 use crate::error::PasswordGeneratorError;
 use crate::error::Result;
-use dirs::home_dir;
-use reqwest::Client;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
-const DICEWARE_TIMEOUT: Duration = Duration::from_secs(15);
 const MIN_CUSTOM_WORDS: usize = 2;
+const EFF_LARGE_EMBEDDED: &str = include_str!("../assets/eff_large_wordlist.txt");
+const EFF_SHORT_EMBEDDED: &str = include_str!("../assets/eff_short_wordlist_1.txt");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WordlistPreset {
@@ -34,20 +32,6 @@ impl WordlistPreset {
         }
     }
 
-    fn url(self) -> &'static str {
-        match self {
-            Self::EffLarge => "https://www.eff.org/files/2016/07/18/eff_large_wordlist.txt",
-            Self::EffShort => "https://www.eff.org/files/2016/09/08/eff_short_wordlist_1.txt",
-        }
-    }
-
-    fn cache_filename(self) -> &'static str {
-        match self {
-            Self::EffLarge => "diceware_wordlist.txt",
-            Self::EffShort => "eff_short_wordlist_1.txt",
-        }
-    }
-
     fn expected_lines(self) -> usize {
         match self {
             Self::EffLarge => 7776,
@@ -59,6 +43,13 @@ impl WordlistPreset {
         match self {
             Self::EffLarge => "addd35536511597a02fa0a9ff1e5284677b8883b83e986e43f15a3db996b903e",
             Self::EffShort => "8f5ca830b8bffb6fe39c9736c024a00a6a6411adb3f83a9be8bfeeb6e067ae69",
+        }
+    }
+
+    fn embedded(self) -> &'static str {
+        match self {
+            Self::EffLarge => EFF_LARGE_EMBEDDED,
+            Self::EffShort => EFF_SHORT_EMBEDDED,
         }
     }
 }
@@ -77,39 +68,31 @@ impl Default for WordlistSource {
 
 pub async fn get_wordlist(source: &WordlistSource) -> Result<Vec<String>> {
     match source {
-        WordlistSource::Preset(preset) => get_preset_wordlist(*preset).await,
+        WordlistSource::Preset(preset) => load_embedded_preset(*preset),
         WordlistSource::Path(path) => load_custom_wordlist(path),
     }
 }
 
-async fn get_preset_wordlist(preset: WordlistPreset) -> Result<Vec<String>> {
-    let home = home_dir().ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::NotFound, "Home directory not found")
-    })?;
-    let workdir = home.join(".npwg");
-    let wordlist_path = workdir.join(preset.cache_filename());
-
-    if wordlist_path.exists() {
-        return load_preset_wordlist(&wordlist_path, preset);
-    }
-
-    download_preset_wordlist(&workdir, &wordlist_path, preset).await?;
-    load_preset_wordlist(&wordlist_path, preset)
-}
-
-fn load_preset_wordlist(wordlist_path: &Path, preset: WordlistPreset) -> Result<Vec<String>> {
-    let contents = fs::read_to_string(wordlist_path)?;
-    validate_preset_wordlist(&contents, wordlist_path, preset)?;
-    let words = parse_wordlist(&contents);
+fn load_embedded_preset(preset: WordlistPreset) -> Result<Vec<String>> {
+    let contents = preset.embedded();
+    validate_embedded_wordlist(contents, preset)?;
+    let words = parse_wordlist(contents);
     if words.len() != preset.expected_lines() {
         return Err(PasswordGeneratorError::WordlistValidation(format!(
-            "Expected {} words in {}, parsed {}",
+            "Expected {} words in embedded {}, parsed {}",
             preset.expected_lines(),
-            wordlist_path.display(),
+            preset_label(preset),
             words.len()
         )));
     }
     Ok(words)
+}
+
+fn preset_label(preset: WordlistPreset) -> &'static str {
+    match preset {
+        WordlistPreset::EffLarge => "eff-large",
+        WordlistPreset::EffShort => "eff-short",
+    }
 }
 
 fn load_custom_wordlist(wordlist_path: &Path) -> Result<Vec<String>> {
@@ -130,39 +113,6 @@ fn load_custom_wordlist(wordlist_path: &Path) -> Result<Vec<String>> {
         )));
     }
     Ok(words)
-}
-
-async fn download_preset_wordlist(
-    workdir: &Path,
-    wordlist_path: &Path,
-    preset: WordlistPreset,
-) -> Result<()> {
-    println!("Downloading wordlist from {}", preset.url());
-
-    fs::create_dir_all(workdir)?;
-
-    let client = Client::builder().timeout(DICEWARE_TIMEOUT).build()?;
-    let response = client.get(preset.url()).send().await?.error_for_status()?;
-    let bytes = response.bytes().await?;
-
-    if bytes.is_empty() {
-        return Err(PasswordGeneratorError::WordlistValidation(
-            "Downloaded wordlist was empty".to_string(),
-        ));
-    }
-
-    let contents = String::from_utf8(bytes.to_vec()).map_err(|err| {
-        PasswordGeneratorError::WordlistValidation(format!(
-            "Downloaded wordlist was not valid UTF-8: {}",
-            err
-        ))
-    })?;
-
-    validate_preset_wordlist(&contents, wordlist_path, preset)?;
-    fs::write(wordlist_path, contents.as_bytes())?;
-
-    println!("Wordlist downloaded to {:?}", wordlist_path);
-    Ok(())
 }
 
 fn parse_wordlist(contents: &str) -> Vec<String> {
@@ -194,17 +144,13 @@ fn hex_sha256(data: &[u8]) -> String {
         .collect()
 }
 
-fn validate_preset_wordlist(
-    contents: &str,
-    wordlist_path: &Path,
-    preset: WordlistPreset,
-) -> Result<()> {
+fn validate_embedded_wordlist(contents: &str, preset: WordlistPreset) -> Result<()> {
     let line_count = contents.lines().count();
     if line_count != preset.expected_lines() {
         return Err(PasswordGeneratorError::WordlistValidation(format!(
-            "Expected {} entries in {}, found {}",
+            "Expected {} entries in embedded {}, found {}",
             preset.expected_lines(),
-            wordlist_path.display(),
+            preset_label(preset),
             line_count
         )));
     }
@@ -212,8 +158,8 @@ fn validate_preset_wordlist(
     let checksum = hex_sha256(contents.as_bytes());
     if checksum != preset.expected_sha256() {
         return Err(PasswordGeneratorError::WordlistValidation(format!(
-            "Checksum mismatch for {}. Delete the wordlist and rerun npwg to redownload.",
-            wordlist_path.display()
+            "Checksum mismatch for embedded {}.",
+            preset_label(preset)
         )));
     }
 
@@ -230,6 +176,14 @@ mod tests {
     fn preset_metadata_matches_known_sizes() {
         assert_eq!(WordlistPreset::EffLarge.expected_lines(), 7776);
         assert_eq!(WordlistPreset::EffShort.expected_lines(), 1296);
+    }
+
+    #[test]
+    fn embedded_presets_parse_expected_word_counts() {
+        let large = load_embedded_preset(WordlistPreset::EffLarge).unwrap();
+        let short = load_embedded_preset(WordlistPreset::EffShort).unwrap();
+        assert_eq!(large.len(), 7776);
+        assert_eq!(short.len(), 1296);
     }
 
     #[test]
