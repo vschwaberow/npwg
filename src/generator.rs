@@ -21,7 +21,6 @@ use std::collections::HashSet;
 use zeroize::Zeroize;
 
 const MIN_ENTROPY_MAX_ATTEMPTS: usize = 10_000;
-const DICEWARE_WORDLIST_SIZE: f64 = 7776.0;
 
 const DEFAULT_SEPARATORS: &[char] = &[
     'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's',
@@ -225,7 +224,11 @@ pub async fn generate_passwords(config: &PasswordGeneratorConfig) -> Result<Vec<
     Ok(passwords)
 }
 
-pub fn ensure_min_entropy_feasible(config: &PasswordGeneratorConfig, min_bits: f64) -> Result<()> {
+pub fn ensure_min_entropy_feasible(
+    config: &PasswordGeneratorConfig,
+    min_bits: f64,
+    wordlist_len: Option<usize>,
+) -> Result<()> {
     if min_bits <= 0.0 {
         return Err(PasswordGeneratorError::InvalidConfig(
             "--min-entropy must be greater than 0.".to_string(),
@@ -233,7 +236,19 @@ pub fn ensure_min_entropy_feasible(config: &PasswordGeneratorConfig, min_bits: f
     }
 
     let max_bits = match config.mode {
-        PasswordGeneratorMode::Diceware => config.length as f64 * DICEWARE_WORDLIST_SIZE.log2(),
+        PasswordGeneratorMode::Diceware => {
+            let size = wordlist_len.ok_or_else(|| {
+                PasswordGeneratorError::InvalidConfig(
+                    "Diceware --min-entropy requires a loaded wordlist.".to_string(),
+                )
+            })? as f64;
+            if size <= 1.0 {
+                return Err(PasswordGeneratorError::InvalidConfig(
+                    "Wordlist is too small to estimate entropy.".to_string(),
+                ));
+            }
+            config.length as f64 * size.log2()
+        }
         PasswordGeneratorMode::Password => {
             let allowed = effective_allowed_chars(config)?;
             let probe = charset_probe(&allowed);
@@ -254,7 +269,7 @@ pub async fn generate_password_with_min_entropy(
     config: &PasswordGeneratorConfig,
     min_bits: f64,
 ) -> Result<String> {
-    ensure_min_entropy_feasible(config, min_bits)?;
+    ensure_min_entropy_feasible(config, min_bits, None)?;
     for _ in 0..MIN_ENTROPY_MAX_ATTEMPTS {
         let mut password = if config.pronounceable {
             generate_pronounceable_password(config).await?
@@ -276,7 +291,7 @@ pub async fn generate_passwords_with_min_entropy(
     config: &PasswordGeneratorConfig,
     min_bits: f64,
 ) -> Result<Vec<String>> {
-    ensure_min_entropy_feasible(config, min_bits)?;
+    ensure_min_entropy_feasible(config, min_bits, None)?;
     let mut passwords = Vec::with_capacity(config.num_passwords);
     for _ in 0..config.num_passwords {
         passwords.push(generate_password_with_min_entropy(config, min_bits).await?);
@@ -289,7 +304,7 @@ pub async fn generate_diceware_passphrase_with_min_entropy(
     config: &PasswordGeneratorConfig,
     min_bits: f64,
 ) -> Result<Vec<String>> {
-    ensure_min_entropy_feasible(config, min_bits)?;
+    ensure_min_entropy_feasible(config, min_bits, Some(wordlist.len()))?;
     generate_diceware_passphrase(wordlist, config).await
 }
 

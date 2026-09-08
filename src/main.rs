@@ -199,6 +199,20 @@ fn build_cli() -> Command {
                 .requires("use-words"),
         )
         .arg(
+            Arg::new("wordlist-preset")
+                .long("wordlist-preset")
+                .value_name("PRESET")
+                .help("Built-in diceware wordlist preset (eff-large, eff-short) [default: eff-large]")
+                .requires("use-words"),
+        )
+        .arg(
+            Arg::new("wordlist")
+                .long("wordlist")
+                .value_name("PATH")
+                .help("Path to a custom diceware wordlist (tab or plain words)")
+                .requires("use-words"),
+        )
+        .arg(
             Arg::new("pronounceable")
                 .long("pronounceable")
                 .help("Generate pronounceable passwords")
@@ -422,12 +436,25 @@ fn min_entropy_bits(matches: &clap::ArgMatches) -> Option<f64> {
     matches.get_one::<f64>("min-entropy").copied()
 }
 
+fn resolve_wordlist_source(matches: &clap::ArgMatches) -> Result<diceware::WordlistSource> {
+    if matches.value_source("wordlist") == Some(ValueSource::CommandLine) {
+        let path = matches.get_one::<String>("wordlist").unwrap();
+        return Ok(diceware::WordlistSource::Path(path.into()));
+    }
+    let preset_raw = matches
+        .get_one::<String>("wordlist-preset")
+        .map(|s| s.as_str())
+        .unwrap_or("eff-large");
+    let preset = diceware::WordlistPreset::parse(preset_raw)?;
+    Ok(diceware::WordlistSource::Preset(preset))
+}
+
 async fn handle_diceware(
     config: &PasswordGeneratorConfig,
     matches: &clap::ArgMatches,
     copy: bool,
 ) -> Result<()> {
-    let wordlist = diceware::get_wordlist().await?;
+    let wordlist = diceware::get_wordlist(&resolve_wordlist_source(matches)?).await?;
     let passphrases = match min_entropy_bits(matches) {
         Some(min_bits) => {
             generate_diceware_passphrase_with_min_entropy(&wordlist, config, min_bits).await?
@@ -968,6 +995,36 @@ mod cli_tests {
             .iter()
             .any(|c| !c.is_ascii_alphanumeric()));
     }
+    #[test]
+    fn test_cli_wordlist_requires_use_words() {
+        let result = build_cli().try_get_matches_from(["npwg", "--wordlist", "/tmp/x"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cli_resolves_wordlist_path() {
+        let matches = build_cli()
+            .try_get_matches_from(["npwg", "--use-words", "--wordlist", "/tmp/words.txt"])
+            .unwrap();
+        match resolve_wordlist_source(&matches).unwrap() {
+            diceware::WordlistSource::Path(path) => {
+                assert_eq!(path, std::path::PathBuf::from("/tmp/words.txt"));
+            }
+            other => panic!("expected path source, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_cli_resolves_wordlist_preset_short() {
+        let matches = build_cli()
+            .try_get_matches_from(["npwg", "--use-words", "--wordlist-preset", "eff-short"])
+            .unwrap();
+        match resolve_wordlist_source(&matches).unwrap() {
+            diceware::WordlistSource::Preset(diceware::WordlistPreset::EffShort) => {}
+            other => panic!("expected eff-short, got {other:?}"),
+        }
+    }
+
     #[test]
     fn test_cli_require_needs_use_words() {
         let result = build_cli().try_get_matches_from(["npwg", "--require", "digit"]);

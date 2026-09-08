@@ -161,7 +161,7 @@ async fn generate_interactive_passphrase(term: &Term, theme: &ColorfulTheme) -> 
         .allow_empty(true)
         .interact_on(term)?;
 
-    let wordlist = diceware::get_wordlist().await?;
+    let wordlist = diceware::get_wordlist(&diceware::WordlistSource::default()).await?;
 
     let mut config = PasswordGeneratorConfig::new();
     config.num_passwords = count as usize;
