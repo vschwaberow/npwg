@@ -8,6 +8,8 @@ use crate::error::{PasswordGeneratorError, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
+pub const AMBIGUOUS_CHARS: &[char] = &['0', 'O', 'o', '1', 'l', 'I', '|'];
+
 pub const DEFINE: &[(&str, &str)] = &[
     ("symbol1", "#%&?@"),
     ("symbol2", "!#$%&*+-./:=?@~"),
@@ -49,6 +51,12 @@ pub enum Separator {
     Random(Vec<char>),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RequireClass {
+    Digit,
+    Symbol,
+}
+
 pub struct PasswordGeneratorConfig {
     pub length: usize,
     pub pattern: Option<String>,
@@ -61,6 +69,7 @@ pub struct PasswordGeneratorConfig {
     pub separator: Option<Separator>,
     pub pronounceable: bool,
     pub seed: Option<u64>,
+    pub require_classes: Vec<RequireClass>,
 }
 
 impl Default for PasswordGeneratorConfig {
@@ -83,6 +92,7 @@ impl PasswordGeneratorConfig {
             pronounceable: false,
             pattern: None,
             seed: None,
+            require_classes: Vec::new(),
         };
         config
             .set_allowed_chars("allprint")
@@ -120,6 +130,10 @@ impl PasswordGeneratorConfig {
 
     pub fn set_avoid_repeating(&mut self, avoid: bool) {
         self.avoid_repetition = avoid;
+    }
+
+    pub fn exclude_ambiguous(&mut self) {
+        self.excluded_chars.extend(AMBIGUOUS_CHARS.iter().copied());
     }
 
     pub fn validate(&self) -> Result<()> {
@@ -168,9 +182,42 @@ impl PasswordGeneratorConfig {
                     "Cannot combine diceware mode with pronounceable passwords.".to_string(),
                 ));
             }
+        } else if !self.require_classes.is_empty() {
+            return Err(PasswordGeneratorError::InvalidConfig(
+                "--require is only supported with --use-words.".to_string(),
+            ));
         }
 
         Ok(())
+    }
+
+    pub fn parse_require_list(raw: &str) -> Result<Vec<RequireClass>> {
+        let mut classes = Vec::new();
+        for part in raw.split(',') {
+            let token = part.trim().to_ascii_lowercase();
+            if token.is_empty() {
+                continue;
+            }
+            let class = match token.as_str() {
+                "digit" => RequireClass::Digit,
+                "symbol" => RequireClass::Symbol,
+                other => {
+                    return Err(PasswordGeneratorError::InvalidConfig(format!(
+                        "Unknown --require class '{}'. Use digit and/or symbol.",
+                        other
+                    )));
+                }
+            };
+            if !classes.contains(&class) {
+                classes.push(class);
+            }
+        }
+        if classes.is_empty() {
+            return Err(PasswordGeneratorError::InvalidConfig(
+                "--require needs at least one of: digit, symbol.".to_string(),
+            ));
+        }
+        Ok(classes)
     }
     pub fn set_use_words(&mut self, use_words: bool) {
         self.mode = if use_words {
@@ -276,5 +323,26 @@ mod tests {
 
         assert!(config.add_allowed_chars("").is_err());
         assert_eq!(config.allowed_chars, before_invalid);
+    }
+
+    #[test]
+    fn exclude_ambiguous_removes_lookalikes_from_effective_pool() {
+        use crate::generator::effective_allowed_chars;
+
+        let mut config = PasswordGeneratorConfig::new();
+        config.exclude_ambiguous();
+        let chars = effective_allowed_chars(&config).unwrap();
+        for c in AMBIGUOUS_CHARS {
+            assert!(!chars.contains(c), "ambiguous {c:?} still present");
+        }
+    }
+
+    #[test]
+    fn exclude_ambiguous_can_empty_small_charset() {
+        let mut config = PasswordGeneratorConfig::new();
+        config.clear_allowed_chars();
+        config.allowed_chars = AMBIGUOUS_CHARS.to_vec();
+        config.exclude_ambiguous();
+        assert!(config.validate().is_err());
     }
 }

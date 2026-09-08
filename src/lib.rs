@@ -11,6 +11,7 @@ pub mod generator;
 pub mod interactive;
 pub mod policy;
 pub mod profile;
+pub mod pwned;
 pub mod stats;
 pub mod strength;
 #[cfg(test)]

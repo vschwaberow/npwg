@@ -13,6 +13,10 @@ npwg is a secure password generator written in Rust. With npwg, you can easily g
 - Display statistics about the generated passwords
 - Show a local heuristic strength estimate for generated passwords (not NIST or zxcvbn)
 - Enforce a minimum estimated entropy by regenerating until the threshold is met
+- Exclude ambiguous characters with `--no-ambiguous`
+- Append required digit/symbol characters to diceware passphrases with `--require`
+- Choose EFF large/short wordlists or a custom `--wordlist` path
+- Check generated secrets against Have I Been Pwned via k-anonymity (`--check-pwned`)
 - Interactive mode for easy password generation
 - Deterministic mode for password derivation from a master password and service
 
@@ -59,8 +63,13 @@ npwg [OPTIONS]
 - `--stats`: Show statistics about the generated passwords
 - `--strength`: Show a local heuristic strength estimate (not a formal compliance check)
 - `--min-entropy <BITS>`: Regenerate until estimated entropy reaches at least BITS (conflicts with `--seed`, `--deterministic`, `--mutate`)
+- `--no-ambiguous`: Exclude ambiguous characters (`0 O o 1 l I |`) from the character pool
+- `--check-pwned`: Reject secrets found in Have I Been Pwned (SHA-1 prefix only)
 - `-a, --allowed <CHARS>`: Sets the allowed characters [default: allprint]
-- `--use-words`: Use diceware words instead of characters (EFF large wordlist, SHA-256 pinned)
+- `--use-words`: Use diceware words instead of characters (EFF wordlists, SHA-256 pinned)
+- `--require <CLASSES>`: With `--use-words`, append required classes (`digit`, `symbol`)
+- `--wordlist-preset <PRESET>`: Diceware preset (`eff-large`, `eff-short`; default `eff-large`)
+- `--wordlist <PATH>`: Custom diceware wordlist path (tab-separated or plain words)
 - `-i, --interactive`: Start interactive console mode
 - `--config <PATH>`: Path to a configuration file with defaults and profiles
 - `--profile <NAME>`: Name of a profile from the configuration file
@@ -146,6 +155,21 @@ Customise separators or request random punctuation between words:
 ```sh
 npwg --use-words --separator "-" --length 5
 npwg --use-words --separator random --length 7
+```
+
+Use the EFF short list, a custom wordlist, or append digit/symbol for site rules:
+
+```sh
+npwg --use-words --wordlist-preset eff-short --length 8
+npwg --use-words --wordlist ./my-words.txt --length 6
+npwg --use-words --require digit,symbol --length 6
+```
+
+Skip ambiguous characters and reject breached secrets:
+
+```sh
+npwg --no-ambiguous --length 20
+npwg --check-pwned --length 24
 ```
 
 #### Pronounceable and Pattern Modes

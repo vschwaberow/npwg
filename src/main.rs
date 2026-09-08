@@ -11,6 +11,7 @@ mod generator;
 mod interactive;
 mod policy;
 mod profile;
+mod pwned;
 mod stats;
 mod strength;
 
@@ -122,6 +123,12 @@ fn build_cli() -> Command {
                 .action(ArgAction::SetTrue),
         )
         .arg(
+            Arg::new("no-ambiguous")
+                .long("no-ambiguous")
+                .help("Exclude ambiguous characters (0 O o 1 l I |)")
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
             Arg::new("stats")
                 .long("stats")
                 .help("Show statistics about the generated passwords")
@@ -133,9 +140,15 @@ fn build_cli() -> Command {
                 .help("Show strength meter for the generated passwords")
                 .action(ArgAction::SetTrue),
         )
+        .arg(
+            Arg::new("check-pwned")
+                .long("check-pwned")
+                .help("Reject secrets found in Have I Been Pwned (k-anonymity range API)")
+                .action(ArgAction::SetTrue),
+        )
         .group(
             ArgGroup::new("output_options")
-                .args(["stats", "strength"])
+                .args(["stats", "strength", "check-pwned"])
                 .multiple(true),
         )
         .arg(
@@ -183,6 +196,27 @@ fn build_cli() -> Command {
                 .long("separator")
                 .value_name("SEPARATOR")
                 .help("Sets the separator for diceware passphrases (single character or 'random')")
+                .requires("use-words"),
+        )
+        .arg(
+            Arg::new("require")
+                .long("require")
+                .value_name("CLASSES")
+                .help("Append required character classes to diceware passphrases (digit,symbol)")
+                .requires("use-words"),
+        )
+        .arg(
+            Arg::new("wordlist-preset")
+                .long("wordlist-preset")
+                .value_name("PRESET")
+                .help("Built-in diceware wordlist preset (eff-large, eff-short) [default: eff-large]")
+                .requires("use-words"),
+        )
+        .arg(
+            Arg::new("wordlist")
+                .long("wordlist")
+                .value_name("PATH")
+                .help("Path to a custom diceware wordlist (tab or plain words)")
                 .requires("use-words"),
         )
         .arg(
@@ -246,9 +280,11 @@ fn build_cli() -> Command {
                 .args([
                     "pattern",
                     "avoid-repeating",
+                    "no-ambiguous",
                     "allowed",
                     "use-words",
                     "separator",
+                    "require",
                     "pronounceable",
                     "mutate",
                     "mutation_type",
@@ -338,6 +374,9 @@ fn build_config(matches: &clap::ArgMatches) -> Result<PasswordGeneratorConfig> {
     if matches.get_flag("avoid-repeating") {
         config.set_avoid_repeating(true);
     }
+    if matches.get_flag("no-ambiguous") {
+        config.exclude_ambiguous();
+    }
     if matches.value_source("seed") == Some(ValueSource::CommandLine) {
         config.seed = matches.get_one::<u64>("seed").copied();
     }
@@ -349,6 +388,11 @@ fn build_config(matches: &clap::ArgMatches) -> Result<PasswordGeneratorConfig> {
 
     if matches.get_flag("use-words") {
         config.set_use_words(true);
+    }
+
+    if matches.value_source("require") == Some(ValueSource::CommandLine) {
+        let raw = matches.get_one::<String>("require").unwrap();
+        config.require_classes = PasswordGeneratorConfig::parse_require_list(raw)?;
     }
 
     if matches.get_flag("pronounceable") {
@@ -399,12 +443,25 @@ fn min_entropy_bits(matches: &clap::ArgMatches) -> Option<f64> {
     matches.get_one::<f64>("min-entropy").copied()
 }
 
+fn resolve_wordlist_source(matches: &clap::ArgMatches) -> Result<diceware::WordlistSource> {
+    if matches.value_source("wordlist") == Some(ValueSource::CommandLine) {
+        let path = matches.get_one::<String>("wordlist").unwrap();
+        return Ok(diceware::WordlistSource::Path(path.into()));
+    }
+    let preset_raw = matches
+        .get_one::<String>("wordlist-preset")
+        .map(|s| s.as_str())
+        .unwrap_or("eff-large");
+    let preset = diceware::WordlistPreset::parse(preset_raw)?;
+    Ok(diceware::WordlistSource::Preset(preset))
+}
+
 async fn handle_diceware(
     config: &PasswordGeneratorConfig,
     matches: &clap::ArgMatches,
     copy: bool,
 ) -> Result<()> {
-    let wordlist = diceware::get_wordlist().await?;
+    let wordlist = diceware::get_wordlist(&resolve_wordlist_source(matches)?).await?;
     let passphrases = match min_entropy_bits(matches) {
         Some(min_bits) => {
             generate_diceware_passphrase_with_min_entropy(&wordlist, config, min_bits).await?
@@ -417,6 +474,7 @@ async fn handle_diceware(
         copy,
         "Passphrase(s) copied to clipboard.",
     )
+    .await
 }
 
 async fn handle_password(
@@ -428,7 +486,7 @@ async fn handle_password(
         Some(min_bits) => generate_passwords_with_min_entropy(config, min_bits).await?,
         None => generate_passwords(config).await?,
     };
-    finish_cli_secrets(passwords, matches, copy, "Password(s) copied to clipboard.")
+    finish_cli_secrets(passwords, matches, copy, "Password(s) copied to clipboard.").await
 }
 
 async fn handle_pronounceable(
@@ -446,6 +504,7 @@ async fn handle_pronounceable(
         copy,
         "Passphrase(s) copied to clipboard.",
     )
+    .await
 }
 
 async fn handle_deterministic(
@@ -504,7 +563,7 @@ async fn handle_deterministic(
         passwords.push(password);
     }
 
-    finish_cli_secrets(passwords, matches, copy, "Password(s) copied to clipboard.")
+    finish_cli_secrets(passwords, matches, copy, "Password(s) copied to clipboard.").await
 }
 
 async fn handle_mutation(
@@ -578,12 +637,16 @@ async fn handle_mutation(
     Ok(())
 }
 
-fn finish_cli_secrets(
+async fn finish_cli_secrets(
     mut secrets: Vec<String>,
     matches: &clap::ArgMatches,
     copy: bool,
     copy_label: &str,
 ) -> Result<()> {
+    if matches.get_flag("check-pwned") {
+        pwned::ensure_secrets_not_pwned(&secrets).await?;
+    }
+
     render_secrets(&secrets, matches.get_flag("qr"))?;
 
     if copy && !secrets.is_empty() {
@@ -945,6 +1008,74 @@ mod cli_tests {
             .iter()
             .any(|c| !c.is_ascii_alphanumeric()));
     }
+    #[test]
+    fn test_cli_parses_check_pwned() {
+        let matches = build_cli()
+            .try_get_matches_from(["npwg", "--check-pwned"])
+            .unwrap();
+        assert!(matches.get_flag("check-pwned"));
+    }
+
+    #[test]
+    fn test_cli_wordlist_requires_use_words() {
+        let result = build_cli().try_get_matches_from(["npwg", "--wordlist", "/tmp/x"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cli_resolves_wordlist_path() {
+        let matches = build_cli()
+            .try_get_matches_from(["npwg", "--use-words", "--wordlist", "/tmp/words.txt"])
+            .unwrap();
+        match resolve_wordlist_source(&matches).unwrap() {
+            diceware::WordlistSource::Path(path) => {
+                assert_eq!(path, std::path::PathBuf::from("/tmp/words.txt"));
+            }
+            other => panic!("expected path source, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_cli_resolves_wordlist_preset_short() {
+        let matches = build_cli()
+            .try_get_matches_from(["npwg", "--use-words", "--wordlist-preset", "eff-short"])
+            .unwrap();
+        match resolve_wordlist_source(&matches).unwrap() {
+            diceware::WordlistSource::Preset(diceware::WordlistPreset::EffShort) => {}
+            other => panic!("expected eff-short, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_cli_require_needs_use_words() {
+        let result = build_cli().try_get_matches_from(["npwg", "--require", "digit"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cli_parses_require_classes() {
+        let matches = build_cli()
+            .try_get_matches_from(["npwg", "--use-words", "--require", "digit,symbol"])
+            .unwrap();
+        let config = build_config(&matches).unwrap();
+        assert_eq!(
+            config.require_classes,
+            vec![config::RequireClass::Digit, config::RequireClass::Symbol]
+        );
+    }
+
+    #[test]
+    fn test_cli_no_ambiguous_excludes_lookalikes() {
+        let matches = build_cli()
+            .try_get_matches_from(["npwg", "--no-ambiguous"])
+            .unwrap();
+        let config = build_config(&matches).unwrap();
+        let chars = effective_allowed_chars(&config).unwrap();
+        for c in config::AMBIGUOUS_CHARS {
+            assert!(!chars.contains(c));
+        }
+    }
+
     #[test]
     fn test_cli_parses_min_entropy() {
         let matches = build_cli()

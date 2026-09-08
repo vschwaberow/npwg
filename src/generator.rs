@@ -6,7 +6,9 @@
 
 use crate::config::PasswordGeneratorConfig;
 use crate::config::PasswordGeneratorMode;
+use crate::config::RequireClass;
 use crate::config::Separator;
+use crate::config::DEFINE;
 use crate::error::{PasswordGeneratorError, Result};
 use crate::strength::{charset_probe, estimate_entropy_bits, max_entropy_bits_for_probe};
 use argon2::{Algorithm, Argon2, Params, Version};
@@ -19,7 +21,6 @@ use std::collections::HashSet;
 use zeroize::Zeroize;
 
 const MIN_ENTROPY_MAX_ATTEMPTS: usize = 10_000;
-const DICEWARE_WORDLIST_SIZE: f64 = 7776.0;
 
 const DEFAULT_SEPARATORS: &[char] = &[
     'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's',
@@ -223,7 +224,11 @@ pub async fn generate_passwords(config: &PasswordGeneratorConfig) -> Result<Vec<
     Ok(passwords)
 }
 
-pub fn ensure_min_entropy_feasible(config: &PasswordGeneratorConfig, min_bits: f64) -> Result<()> {
+pub fn ensure_min_entropy_feasible(
+    config: &PasswordGeneratorConfig,
+    min_bits: f64,
+    wordlist_len: Option<usize>,
+) -> Result<()> {
     if min_bits <= 0.0 {
         return Err(PasswordGeneratorError::InvalidConfig(
             "--min-entropy must be greater than 0.".to_string(),
@@ -231,7 +236,19 @@ pub fn ensure_min_entropy_feasible(config: &PasswordGeneratorConfig, min_bits: f
     }
 
     let max_bits = match config.mode {
-        PasswordGeneratorMode::Diceware => config.length as f64 * DICEWARE_WORDLIST_SIZE.log2(),
+        PasswordGeneratorMode::Diceware => {
+            let size = wordlist_len.ok_or_else(|| {
+                PasswordGeneratorError::InvalidConfig(
+                    "Diceware --min-entropy requires a loaded wordlist.".to_string(),
+                )
+            })? as f64;
+            if size <= 1.0 {
+                return Err(PasswordGeneratorError::InvalidConfig(
+                    "Wordlist is too small to estimate entropy.".to_string(),
+                ));
+            }
+            config.length as f64 * size.log2()
+        }
         PasswordGeneratorMode::Password => {
             let allowed = effective_allowed_chars(config)?;
             let probe = charset_probe(&allowed);
@@ -252,7 +269,7 @@ pub async fn generate_password_with_min_entropy(
     config: &PasswordGeneratorConfig,
     min_bits: f64,
 ) -> Result<String> {
-    ensure_min_entropy_feasible(config, min_bits)?;
+    ensure_min_entropy_feasible(config, min_bits, None)?;
     for _ in 0..MIN_ENTROPY_MAX_ATTEMPTS {
         let mut password = if config.pronounceable {
             generate_pronounceable_password(config).await?
@@ -274,7 +291,7 @@ pub async fn generate_passwords_with_min_entropy(
     config: &PasswordGeneratorConfig,
     min_bits: f64,
 ) -> Result<Vec<String>> {
-    ensure_min_entropy_feasible(config, min_bits)?;
+    ensure_min_entropy_feasible(config, min_bits, None)?;
     let mut passwords = Vec::with_capacity(config.num_passwords);
     for _ in 0..config.num_passwords {
         passwords.push(generate_password_with_min_entropy(config, min_bits).await?);
@@ -287,7 +304,7 @@ pub async fn generate_diceware_passphrase_with_min_entropy(
     config: &PasswordGeneratorConfig,
     min_bits: f64,
 ) -> Result<Vec<String>> {
-    ensure_min_entropy_feasible(config, min_bits)?;
+    ensure_min_entropy_feasible(config, min_bits, Some(wordlist.len()))?;
     generate_diceware_passphrase(wordlist, config).await
 }
 
@@ -322,10 +339,44 @@ pub async fn generate_diceware_passphrase(
             })?;
             passphrase.push_str(word);
         }
+        append_required_classes(&mut passphrase, &config.require_classes, &mut rng)?;
         passphrases.push(passphrase);
     }
 
     Ok(passphrases)
+}
+
+fn require_class_pool(class: RequireClass) -> Result<&'static str> {
+    let name = match class {
+        RequireClass::Digit => "digit",
+        RequireClass::Symbol => "symbol2",
+    };
+    DEFINE
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, chars)| *chars)
+        .ok_or_else(|| {
+            PasswordGeneratorError::InvalidConfig(format!("Missing charset '{}'.", name))
+        })
+}
+
+fn append_required_classes(
+    passphrase: &mut String,
+    classes: &[RequireClass],
+    rng: &mut impl RngExt,
+) -> Result<()> {
+    for class in classes {
+        let pool = require_class_pool(*class)?;
+        let chars: Vec<char> = pool.chars().collect();
+        let c = chars.choose(rng).copied().ok_or_else(|| {
+            PasswordGeneratorError::InvalidConfig(format!(
+                "Empty character pool for --require {:?}.",
+                class
+            ))
+        })?;
+        passphrase.push(c);
+    }
+    Ok(())
 }
 
 fn get_separator(
@@ -745,5 +796,29 @@ mod tests {
             .await
             .unwrap();
         assert!(estimate_entropy_bits(&password) >= 80.0);
+    }
+    #[tokio::test]
+    async fn test_diceware_require_appends_digit_and_symbol() {
+        let wordlist = vec!["alpha".into(), "bravo".into(), "charlie".into()];
+        let mut config = PasswordGeneratorConfig::new();
+        config.set_use_words(true);
+        config.length = 3;
+        config.seed = Some(42);
+        config.require_classes = vec![RequireClass::Digit, RequireClass::Symbol];
+        let phrases = generate_diceware_passphrase(&wordlist, &config)
+            .await
+            .unwrap();
+        assert_eq!(phrases.len(), 1);
+        let phrase = &phrases[0];
+        assert!(
+            phrase.chars().any(|c| c.is_ascii_digit()),
+            "missing digit in {phrase}"
+        );
+        assert!(
+            phrase
+                .chars()
+                .any(|c| !c.is_ascii_alphanumeric() && c != ' '),
+            "missing symbol in {phrase}"
+        );
     }
 }
