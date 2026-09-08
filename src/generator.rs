@@ -6,7 +6,9 @@
 
 use crate::config::PasswordGeneratorConfig;
 use crate::config::PasswordGeneratorMode;
+use crate::config::RequireClass;
 use crate::config::Separator;
+use crate::config::DEFINE;
 use crate::error::{PasswordGeneratorError, Result};
 use crate::strength::{charset_probe, estimate_entropy_bits, max_entropy_bits_for_probe};
 use argon2::{Algorithm, Argon2, Params, Version};
@@ -322,10 +324,44 @@ pub async fn generate_diceware_passphrase(
             })?;
             passphrase.push_str(word);
         }
+        append_required_classes(&mut passphrase, &config.require_classes, &mut rng)?;
         passphrases.push(passphrase);
     }
 
     Ok(passphrases)
+}
+
+fn require_class_pool(class: RequireClass) -> Result<&'static str> {
+    let name = match class {
+        RequireClass::Digit => "digit",
+        RequireClass::Symbol => "symbol2",
+    };
+    DEFINE
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, chars)| *chars)
+        .ok_or_else(|| {
+            PasswordGeneratorError::InvalidConfig(format!("Missing charset '{}'.", name))
+        })
+}
+
+fn append_required_classes(
+    passphrase: &mut String,
+    classes: &[RequireClass],
+    rng: &mut impl RngExt,
+) -> Result<()> {
+    for class in classes {
+        let pool = require_class_pool(*class)?;
+        let chars: Vec<char> = pool.chars().collect();
+        let c = chars.choose(rng).copied().ok_or_else(|| {
+            PasswordGeneratorError::InvalidConfig(format!(
+                "Empty character pool for --require {:?}.",
+                class
+            ))
+        })?;
+        passphrase.push(c);
+    }
+    Ok(())
 }
 
 fn get_separator(
@@ -745,5 +781,29 @@ mod tests {
             .await
             .unwrap();
         assert!(estimate_entropy_bits(&password) >= 80.0);
+    }
+    #[tokio::test]
+    async fn test_diceware_require_appends_digit_and_symbol() {
+        let wordlist = vec!["alpha".into(), "bravo".into(), "charlie".into()];
+        let mut config = PasswordGeneratorConfig::new();
+        config.set_use_words(true);
+        config.length = 3;
+        config.seed = Some(42);
+        config.require_classes = vec![RequireClass::Digit, RequireClass::Symbol];
+        let phrases = generate_diceware_passphrase(&wordlist, &config)
+            .await
+            .unwrap();
+        assert_eq!(phrases.len(), 1);
+        let phrase = &phrases[0];
+        assert!(
+            phrase.chars().any(|c| c.is_ascii_digit()),
+            "missing digit in {phrase}"
+        );
+        assert!(
+            phrase
+                .chars()
+                .any(|c| !c.is_ascii_alphanumeric() && c != ' '),
+            "missing symbol in {phrase}"
+        );
     }
 }

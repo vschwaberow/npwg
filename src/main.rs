@@ -192,6 +192,13 @@ fn build_cli() -> Command {
                 .requires("use-words"),
         )
         .arg(
+            Arg::new("require")
+                .long("require")
+                .value_name("CLASSES")
+                .help("Append required character classes to diceware passphrases (digit,symbol)")
+                .requires("use-words"),
+        )
+        .arg(
             Arg::new("pronounceable")
                 .long("pronounceable")
                 .help("Generate pronounceable passwords")
@@ -256,6 +263,7 @@ fn build_cli() -> Command {
                     "allowed",
                     "use-words",
                     "separator",
+                    "require",
                     "pronounceable",
                     "mutate",
                     "mutation_type",
@@ -359,6 +367,11 @@ fn build_config(matches: &clap::ArgMatches) -> Result<PasswordGeneratorConfig> {
 
     if matches.get_flag("use-words") {
         config.set_use_words(true);
+    }
+
+    if matches.value_source("require") == Some(ValueSource::CommandLine) {
+        let raw = matches.get_one::<String>("require").unwrap();
+        config.require_classes = PasswordGeneratorConfig::parse_require_list(raw)?;
     }
 
     if matches.get_flag("pronounceable") {
@@ -955,6 +968,24 @@ mod cli_tests {
             .iter()
             .any(|c| !c.is_ascii_alphanumeric()));
     }
+    #[test]
+    fn test_cli_require_needs_use_words() {
+        let result = build_cli().try_get_matches_from(["npwg", "--require", "digit"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cli_parses_require_classes() {
+        let matches = build_cli()
+            .try_get_matches_from(["npwg", "--use-words", "--require", "digit,symbol"])
+            .unwrap();
+        let config = build_config(&matches).unwrap();
+        assert_eq!(
+            config.require_classes,
+            vec![config::RequireClass::Digit, config::RequireClass::Symbol]
+        );
+    }
+
     #[test]
     fn test_cli_no_ambiguous_excludes_lookalikes() {
         let matches = build_cli()
