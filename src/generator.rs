@@ -12,7 +12,7 @@ use clap::ValueEnum;
 use rand::rngs::StdRng;
 use rand::seq::IndexedRandom;
 use rand::seq::IteratorRandom;
-use rand::{Rng, SeedableRng};
+use rand::{RngExt, SeedableRng};
 use std::collections::HashSet;
 use zeroize::Zeroize;
 
@@ -258,7 +258,7 @@ pub async fn generate_diceware_passphrase(
 fn get_separator(
     config: &PasswordGeneratorConfig,
     default_separators: &[char],
-    rng: &mut impl rand::Rng,
+    rng: &mut impl rand::RngExt,
 ) -> Result<String> {
     match &config.separator {
         Some(Separator::Fixed(c)) => Ok(c.to_string()),
@@ -436,7 +436,7 @@ pub fn mutate_password(
 
 fn choose_char(
     chars: &[char],
-    rng: &mut impl Rng,
+    rng: &mut impl RngExt,
     last: Option<char>,
     avoid_repetition: bool,
 ) -> Option<char> {
