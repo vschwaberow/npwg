@@ -2,6 +2,8 @@
 
 npwg is a secure password generator written in Rust. With npwg, you can easily generate strong and random passwords or passphrases to protect your online accounts.
 
+Current release: **0.5.3**.
+
 ## Features
 
 - Generate passwords with custom length and count
@@ -35,7 +37,11 @@ If you have Rust and Cargo installed, you can install npwg using the following c
 cargo install npwg
 ```
 
-This will download and compile the latest version of npwg and install it in your Cargo binary directory.
+This installs the latest crates.io release (currently 0.5.3). For the git tip:
+
+```sh
+cargo install --git https://github.com/vschwaberow/npwg.git
+```
 
 ### Manual Installation
 

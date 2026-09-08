@@ -5,18 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.5.3] - 2026-09-08
 ### Added
+- `--min-entropy <BITS>` regenerates passwords until the character-class entropy estimate meets the threshold.
+- `--no-ambiguous` excludes lookalike characters from the generation pool.
+- `--require digit,symbol` appends required character classes to diceware passphrases.
+- `--wordlist-preset eff-large|eff-short` and `--wordlist <PATH>` for diceware wordlist selection.
+- `--check-pwned` rejects secrets found via the Have I Been Pwned k-anonymity range API.
 - `--json` and `--null` machine-readable secret output.
 - `--completions` generates bash/zsh/fish completion scripts.
 - Embedded EFF large/short wordlists for offline diceware.
 - Rich patterns (`{L:n}`, `{D:n}`, `{S:n}`, `{word}`, literals).
 - `--clear-after` clears the TTY after displaying secrets.
-- `--no-ambiguous` excludes lookalike characters from the generation pool.
-- `--require digit,symbol` appends required character classes to diceware passphrases.
-- `--wordlist-preset eff-large|eff-short` and `--wordlist <PATH>` for diceware wordlist selection.
-- `--check-pwned` rejects secrets found via the Have I Been Pwned k-anonymity range API.
-### Added
-- `--min-entropy <BITS>` regenerates passwords until the character-class entropy estimate meets the threshold.
+### Changed
+- Diceware presets load from embedded assets; no network download for `eff-large` / `eff-short`.
 
 ## [0.5.2]
 ### Fixed
