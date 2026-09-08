@@ -157,6 +157,21 @@ npwg --use-words --separator "-" --length 5
 npwg --use-words --separator random --length 7
 ```
 
+Use the EFF short list, a custom wordlist, or append digit/symbol for site rules:
+
+```sh
+npwg --use-words --wordlist-preset eff-short --length 8
+npwg --use-words --wordlist ./my-words.txt --length 6
+npwg --use-words --require digit,symbol --length 6
+```
+
+Skip ambiguous characters and reject breached secrets:
+
+```sh
+npwg --no-ambiguous --length 20
+npwg --check-pwned --length 24
+```
+
 #### Pronounceable and Pattern Modes
 
 Create pronounceable strings that alternate consonants and vowels from the allowed character set:
