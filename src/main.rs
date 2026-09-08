@@ -35,9 +35,9 @@ use dialoguer::{Input, Password};
 use error::{PasswordGeneratorError, Result};
 use generator::{
     effective_allowed_chars, generate_deterministic_password, generate_diceware_passphrase,
-    generate_diceware_passphrase_with_min_entropy, generate_passwords,
-    generate_passwords_with_min_entropy, generate_pronounceable_passwords, mutate_password,
-    MutationType,
+    generate_diceware_passphrase_with_min_entropy, generate_passwords_with_min_entropy,
+    generate_passwords_with_min_entropy_and_wordlist, generate_passwords_with_wordlist,
+    generate_pronounceable_passwords, mutate_password, MutationType,
 };
 use policy::{apply_policy, PolicyName};
 use profile::{apply_allowed_sets, apply_profile, load_user_profiles, parse_separator};
@@ -230,15 +230,13 @@ fn build_cli() -> Command {
             Arg::new("wordlist-preset")
                 .long("wordlist-preset")
                 .value_name("PRESET")
-                .help("Built-in diceware wordlist preset (eff-large, eff-short) [default: eff-large]")
-                .requires("use-words"),
+                .help("Built-in diceware wordlist preset (eff-large, eff-short) [default: eff-large]"),
         )
         .arg(
             Arg::new("wordlist")
                 .long("wordlist")
                 .value_name("PATH")
-                .help("Path to a custom diceware wordlist (tab or plain words)")
-                .requires("use-words"),
+                .help("Path to a custom diceware wordlist (tab or plain words)"),
         )
         .arg(
             Arg::new("pronounceable")
@@ -307,7 +305,7 @@ fn build_cli() -> Command {
             Arg::new("pattern")
                 .short('p')
                 .long("pattern")
-                .help("Pattern for password generation (e.g., LLDDS)")
+                .help("Pattern for password generation (e.g., LLDDS or {L:4}{D:2}-{word})")
                 .value_parser(value_parser!(String))
                 .conflicts_with_all(["pronounceable", "use-words"]),
         )
@@ -533,11 +531,33 @@ async fn handle_password(
     matches: &clap::ArgMatches,
     copy: bool,
 ) -> Result<()> {
+    let pattern_words = load_pattern_wordlist(config, matches).await?;
     let passwords = match min_entropy_bits(matches) {
-        Some(min_bits) => generate_passwords_with_min_entropy(config, min_bits).await?,
-        None => generate_passwords(config).await?,
+        Some(min_bits) => {
+            generate_passwords_with_min_entropy_and_wordlist(
+                config,
+                min_bits,
+                pattern_words.as_deref(),
+            )
+            .await?
+        }
+        None => generate_passwords_with_wordlist(config, pattern_words.as_deref()).await?,
     };
     finish_cli_secrets(passwords, matches, copy, "Password(s) copied to clipboard.").await
+}
+
+async fn load_pattern_wordlist(
+    config: &PasswordGeneratorConfig,
+    matches: &clap::ArgMatches,
+) -> Result<Option<Vec<String>>> {
+    let Some(pattern) = config.pattern.as_deref() else {
+        return Ok(None);
+    };
+    if !generator::pattern_needs_wordlist(pattern) {
+        return Ok(None);
+    }
+    let source = resolve_wordlist_source(matches)?;
+    Ok(Some(diceware::get_wordlist(&source).await?))
 }
 
 async fn handle_pronounceable(
@@ -1140,9 +1160,14 @@ mod cli_tests {
     }
 
     #[test]
-    fn test_cli_wordlist_requires_use_words() {
-        let result = build_cli().try_get_matches_from(["npwg", "--wordlist", "/tmp/x"]);
-        assert!(result.is_err());
+    fn test_cli_parses_wordlist_without_use_words() {
+        let matches = build_cli()
+            .try_get_matches_from(["npwg", "--wordlist", "/tmp/x"])
+            .unwrap();
+        assert_eq!(
+            matches.get_one::<String>("wordlist").map(String::as_str),
+            Some("/tmp/x")
+        );
     }
 
     #[test]

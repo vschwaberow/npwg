@@ -69,6 +69,13 @@ impl std::str::FromStr for MutationType {
 }
 
 pub async fn generate_password(config: &PasswordGeneratorConfig) -> Result<String> {
+    generate_password_with_wordlist(config, None).await
+}
+
+pub async fn generate_password_with_wordlist(
+    config: &PasswordGeneratorConfig,
+    wordlist_override: Option<&[String]>,
+) -> Result<String> {
     let mut rng = match config.seed {
         Some(seed) => StdRng::seed_from_u64(seed),
         None => StdRng::from_rng(&mut rand::rng()),
@@ -78,12 +85,23 @@ pub async fn generate_password(config: &PasswordGeneratorConfig) -> Result<Strin
     let available_chars = effective_allowed_chars(config)?;
 
     if let Some(pattern) = &config.pattern {
+        let loaded_words;
+        let wordlist = if let Some(words) = wordlist_override {
+            Some(words)
+        } else if pattern_needs_wordlist(pattern) {
+            loaded_words =
+                crate::diceware::get_wordlist(&crate::diceware::WordlistSource::default()).await?;
+            Some(loaded_words.as_slice())
+        } else {
+            None
+        };
         return generate_with_pattern(
             pattern,
             &available_chars,
             config.length,
             config.seed,
             config.avoid_repetition,
+            wordlist,
         );
     }
 
@@ -132,6 +150,96 @@ pub fn generate_deterministic_password(
     Ok(output)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PatternToken {
+    Class { symbol: char, count: usize },
+    Word,
+    Literal(char),
+}
+
+pub fn pattern_needs_wordlist(pattern: &str) -> bool {
+    parse_pattern_tokens(pattern)
+        .map(|tokens| tokens.iter().any(|t| matches!(t, PatternToken::Word)))
+        .unwrap_or(false)
+}
+
+fn parse_pattern_tokens(pattern: &str) -> Result<Vec<PatternToken>> {
+    let mut tokens = Vec::new();
+    let mut chars = pattern.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '{' {
+            let mut body = String::new();
+            let mut closed = false;
+            for inner in chars.by_ref() {
+                if inner == '}' {
+                    closed = true;
+                    break;
+                }
+                body.push(inner);
+            }
+            if !closed {
+                return Err(PasswordGeneratorError::InvalidConfig(
+                    "Unclosed '{' in pattern.".to_string(),
+                ));
+            }
+            let body = body.trim();
+            if body.eq_ignore_ascii_case("word") {
+                tokens.push(PatternToken::Word);
+                continue;
+            }
+            let (symbol, count) = match body.split_once(':') {
+                Some((sym, count_str)) => {
+                    let sym = sym.trim();
+                    if sym.len() != 1 {
+                        return Err(PasswordGeneratorError::InvalidConfig(format!(
+                            "Invalid pattern token '{{{}}}'.",
+                            body
+                        )));
+                    }
+                    let symbol = sym.chars().next().unwrap();
+                    let count: usize = count_str.trim().parse().map_err(|_| {
+                        PasswordGeneratorError::InvalidConfig(format!(
+                            "Invalid pattern count in '{{{}}}'.",
+                            body
+                        ))
+                    })?;
+                    if count == 0 {
+                        return Err(PasswordGeneratorError::InvalidConfig(
+                            "Pattern class count must be greater than 0.".to_string(),
+                        ));
+                    }
+                    (symbol, count)
+                }
+                None => {
+                    return Err(PasswordGeneratorError::InvalidConfig(format!(
+                        "Invalid pattern token '{{{}}}'. Use {{L:n}}, {{D:n}}, {{S:n}}, or {{word}}.",
+                        body
+                    )));
+                }
+            };
+            match symbol {
+                'L' | 'l' | 'D' | 'd' | 'S' | 's' => {
+                    tokens.push(PatternToken::Class { symbol, count });
+                }
+                _ => {
+                    return Err(PasswordGeneratorError::InvalidConfig(format!(
+                        "Invalid pattern class '{}'. Use L, D, or S.",
+                        symbol
+                    )));
+                }
+            }
+        } else if matches!(ch, 'L' | 'l' | 'D' | 'd' | 'S' | 's') {
+            tokens.push(PatternToken::Class {
+                symbol: ch,
+                count: 1,
+            });
+        } else {
+            tokens.push(PatternToken::Literal(ch));
+        }
+    }
+    Ok(tokens)
+}
+
 fn pattern_pool(symbol: char, available_chars: &[char]) -> Result<Vec<char>> {
     let pool: Vec<char> = match symbol {
         'L' | 'l' => available_chars
@@ -171,10 +279,18 @@ pub fn generate_with_pattern(
     length: usize,
     seed: Option<u64>,
     avoid_repetition: bool,
+    wordlist: Option<&[String]>,
 ) -> Result<String> {
     if available_chars.is_empty() {
         return Err(PasswordGeneratorError::InvalidConfig(
             "No characters available for generation with the current settings.".to_string(),
+        ));
+    }
+
+    let tokens = parse_pattern_tokens(pattern)?;
+    if tokens.iter().any(|t| matches!(t, PatternToken::Word)) && wordlist.is_none() {
+        return Err(PasswordGeneratorError::InvalidConfig(
+            "Pattern uses {word} but no wordlist is available.".to_string(),
         ));
     }
 
@@ -185,11 +301,31 @@ pub fn generate_with_pattern(
     let mut password = String::with_capacity(length);
     let mut last: Option<char> = None;
 
-    for symbol in pattern.chars() {
-        let pool = pattern_pool(symbol, available_chars)?;
-        if let Some(c) = choose_char(&pool, &mut rng, last, avoid_repetition) {
-            password.push(c);
-            last = Some(c);
+    for token in tokens {
+        match token {
+            PatternToken::Literal(c) => {
+                password.push(c);
+                last = Some(c);
+            }
+            PatternToken::Word => {
+                let words = wordlist.unwrap();
+                let word = words.choose(&mut rng).ok_or_else(|| {
+                    PasswordGeneratorError::InvalidConfig(
+                        "Cannot choose a word from an empty wordlist.".to_string(),
+                    )
+                })?;
+                password.push_str(word);
+                last = word.chars().last();
+            }
+            PatternToken::Class { symbol, count } => {
+                let pool = pattern_pool(symbol, available_chars)?;
+                for _ in 0..count {
+                    if let Some(c) = choose_char(&pool, &mut rng, last, avoid_repetition) {
+                        password.push(c);
+                        last = Some(c);
+                    }
+                }
+            }
         }
     }
 
@@ -217,9 +353,16 @@ pub fn generate_with_pattern(
 }
 
 pub async fn generate_passwords(config: &PasswordGeneratorConfig) -> Result<Vec<String>> {
+    generate_passwords_with_wordlist(config, None).await
+}
+
+pub async fn generate_passwords_with_wordlist(
+    config: &PasswordGeneratorConfig,
+    wordlist_override: Option<&[String]>,
+) -> Result<Vec<String>> {
     let mut passwords = Vec::with_capacity(config.num_passwords);
     for _ in 0..config.num_passwords {
-        passwords.push(generate_password(config).await?);
+        passwords.push(generate_password_with_wordlist(config, wordlist_override).await?);
     }
     Ok(passwords)
 }
@@ -269,12 +412,20 @@ pub async fn generate_password_with_min_entropy(
     config: &PasswordGeneratorConfig,
     min_bits: f64,
 ) -> Result<String> {
+    generate_password_with_min_entropy_and_wordlist(config, min_bits, None).await
+}
+
+pub async fn generate_password_with_min_entropy_and_wordlist(
+    config: &PasswordGeneratorConfig,
+    min_bits: f64,
+    wordlist_override: Option<&[String]>,
+) -> Result<String> {
     ensure_min_entropy_feasible(config, min_bits, None)?;
     for _ in 0..MIN_ENTROPY_MAX_ATTEMPTS {
         let mut password = if config.pronounceable {
             generate_pronounceable_password(config).await?
         } else {
-            generate_password(config).await?
+            generate_password_with_wordlist(config, wordlist_override).await?
         };
         if estimate_entropy_bits(&password) >= min_bits {
             return Ok(password);
@@ -291,10 +442,21 @@ pub async fn generate_passwords_with_min_entropy(
     config: &PasswordGeneratorConfig,
     min_bits: f64,
 ) -> Result<Vec<String>> {
+    generate_passwords_with_min_entropy_and_wordlist(config, min_bits, None).await
+}
+
+pub async fn generate_passwords_with_min_entropy_and_wordlist(
+    config: &PasswordGeneratorConfig,
+    min_bits: f64,
+    wordlist_override: Option<&[String]>,
+) -> Result<Vec<String>> {
     ensure_min_entropy_feasible(config, min_bits, None)?;
     let mut passwords = Vec::with_capacity(config.num_passwords);
     for _ in 0..config.num_passwords {
-        passwords.push(generate_password_with_min_entropy(config, min_bits).await?);
+        passwords.push(
+            generate_password_with_min_entropy_and_wordlist(config, min_bits, wordlist_override)
+                .await?,
+        );
     }
     Ok(passwords)
 }
@@ -650,7 +812,7 @@ mod tests {
     #[test]
     fn test_generate_with_pattern_rejects_pattern_longer_than_length() {
         let available_chars: Vec<char> = "abc123!".chars().collect();
-        let result = generate_with_pattern("LLLLLLLLLL", &available_chars, 8, None, false);
+        let result = generate_with_pattern("LLLLLLLLLL", &available_chars, 8, None, false, None);
         assert!(result.is_err());
     }
 
@@ -661,7 +823,7 @@ mod tests {
         let length = 10;
         let seed = None;
 
-        let result = generate_with_pattern(pattern, &available_chars, length, seed, false);
+        let result = generate_with_pattern(pattern, &available_chars, length, seed, false, None);
         assert!(result.is_err());
     }
 
@@ -673,7 +835,7 @@ mod tests {
         let seed = Some(42);
 
         let password =
-            generate_with_pattern(pattern, &available_chars, length, seed, false).unwrap();
+            generate_with_pattern(pattern, &available_chars, length, seed, false, None).unwrap();
         assert_eq!(password.chars().count(), length);
         for c in password.chars() {
             assert!(available_chars.contains(&c));
@@ -796,6 +958,41 @@ mod tests {
             .await
             .unwrap();
         assert!(estimate_entropy_bits(&password) >= 80.0);
+    }
+
+    #[test]
+    fn test_rich_pattern_literal_and_counts() {
+        let available_chars: Vec<char> = "abc123!".chars().collect();
+        let password =
+            generate_with_pattern("{L:4}{D:2}-", &available_chars, 7, Some(1), false, None)
+                .unwrap();
+        assert_eq!(password.chars().count(), 7);
+        assert_eq!(password.chars().nth(6), Some('-'));
+        assert!(password.chars().take(4).all(|c| c.is_ascii_alphabetic()));
+        assert!(password.chars().skip(4).take(2).all(|c| c.is_ascii_digit()));
+    }
+
+    #[test]
+    fn test_rich_pattern_word_token() {
+        let available_chars: Vec<char> = "abc123!".chars().collect();
+        let words = vec!["alpha".into(), "bravo".into()];
+        let password = generate_with_pattern(
+            "{word}-{D:2}",
+            &available_chars,
+            8,
+            Some(2),
+            false,
+            Some(&words),
+        )
+        .unwrap();
+        assert!(password.starts_with("alpha-") || password.starts_with("bravo-"));
+        assert_eq!(password.chars().count(), 8);
+    }
+
+    #[test]
+    fn test_pattern_needs_wordlist_detects_word_token() {
+        assert!(pattern_needs_wordlist("{L:2}{word}"));
+        assert!(!pattern_needs_wordlist("LLDDS"));
     }
     #[tokio::test]
     async fn test_diceware_require_appends_digit_and_symbol() {

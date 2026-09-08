@@ -13,7 +13,7 @@ fn main() {
         let available_chars: Vec<char> = chars_str.chars().collect();
         let seed = Some(42u64);
 
-        match generate_with_pattern(pattern, &available_chars, *length, seed, false) {
+        match generate_with_pattern(pattern, &available_chars, *length, seed, false, None) {
             Ok(password) => {
                 println!(
                     "Test case {}: Pattern '{}', Chars '{}'",
