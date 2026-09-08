@@ -302,6 +302,14 @@ fn build_cli() -> Command {
                 .conflicts_with_all(["json", "qr"]),
         )
         .arg(
+            Arg::new("clear-after")
+                .long("clear-after")
+                .value_name("SECS")
+                .help("Clear the terminal after SECS when printing secrets to a TTY")
+                .value_parser(value_parser!(u64))
+                .conflicts_with_all(["json", "null", "qr"]),
+        )
+        .arg(
             Arg::new("pattern")
                 .short('p')
                 .long("pattern")
@@ -712,6 +720,21 @@ fn machine_output_mode(matches: &clap::ArgMatches) -> bool {
     matches.get_flag("json") || matches.get_flag("null")
 }
 
+fn should_clear_after_display(matches: &clap::ArgMatches, stdout_is_tty: bool) -> Option<u64> {
+    if !stdout_is_tty {
+        return None;
+    }
+    if machine_output_mode(matches) || matches.get_flag("qr") {
+        return None;
+    }
+    matches.get_one::<u64>("clear-after").copied()
+}
+
+fn clear_terminal_screen() {
+    print!("\x1b[2J\x1b[H");
+    let _ = std::io::stdout().flush();
+}
+
 fn format_secrets_json(secrets: &[String]) -> Result<String> {
     serde_json::to_string(secrets).map_err(|e| {
         PasswordGeneratorError::InvalidConfig(format!("Failed to encode JSON output: {}", e))
@@ -744,6 +767,14 @@ async fn finish_cli_secrets(
         matches.get_flag("json"),
         matches.get_flag("null"),
     )?;
+
+    if let Some(secs) = should_clear_after_display(
+        matches,
+        std::io::IsTerminal::is_terminal(&std::io::stdout()),
+    ) {
+        std::thread::sleep(std::time::Duration::from_secs(secs));
+        clear_terminal_screen();
+    }
 
     if copy && !secrets.is_empty() {
         copy_secrets_to_clipboard(&secrets)?;
@@ -1116,6 +1147,21 @@ mod cli_tests {
             .iter()
             .any(|c| !c.is_ascii_alphanumeric()));
     }
+    #[test]
+    fn test_cli_clear_after_conflicts_with_json() {
+        let result = build_cli().try_get_matches_from(["npwg", "--clear-after", "5", "--json"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_should_clear_after_display_requires_tty() {
+        let matches = build_cli()
+            .try_get_matches_from(["npwg", "--clear-after", "3"])
+            .unwrap();
+        assert_eq!(should_clear_after_display(&matches, false), None);
+        assert_eq!(should_clear_after_display(&matches, true), Some(3));
+    }
+
     #[test]
     fn test_cli_parses_completions_shell() {
         let matches = build_cli()
