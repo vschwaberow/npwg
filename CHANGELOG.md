@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 
 ## [Unreleased]
 ### Added
+- `--no-ambiguous` excludes lookalike characters from the generation pool.
+- `--require digit,symbol` appends required character classes to diceware passphrases.
+- `--wordlist-preset eff-large|eff-short` and `--wordlist <PATH>` for diceware wordlist selection.
+- `--check-pwned` rejects secrets found via the Have I Been Pwned k-anonymity range API.
+### Added
 - `--min-entropy <BITS>` regenerates passwords until the character-class entropy estimate meets the threshold.
 
 ## [0.5.2]

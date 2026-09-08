@@ -13,6 +13,10 @@ npwg is a secure password generator written in Rust. With npwg, you can easily g
 - Display statistics about the generated passwords
 - Show a local heuristic strength estimate for generated passwords (not NIST or zxcvbn)
 - Enforce a minimum estimated entropy by regenerating until the threshold is met
+- Exclude ambiguous characters with `--no-ambiguous`
+- Append required digit/symbol characters to diceware passphrases with `--require`
+- Choose EFF large/short wordlists or a custom `--wordlist` path
+- Check generated secrets against Have I Been Pwned via k-anonymity (`--check-pwned`)
 - Interactive mode for easy password generation
 - Deterministic mode for password derivation from a master password and service
 
@@ -60,7 +64,7 @@ npwg [OPTIONS]
 - `--strength`: Show a local heuristic strength estimate (not a formal compliance check)
 - `--min-entropy <BITS>`: Regenerate until estimated entropy reaches at least BITS (conflicts with `--seed`, `--deterministic`, `--mutate`)
 - `-a, --allowed <CHARS>`: Sets the allowed characters [default: allprint]
-- `--use-words`: Use diceware words instead of characters (EFF large wordlist, SHA-256 pinned)
+- `--use-words`: Use diceware words instead of characters (EFF wordlists, SHA-256 pinned)
 - `-i, --interactive`: Start interactive console mode
 - `--config <PATH>`: Path to a configuration file with defaults and profiles
 - `--profile <NAME>`: Name of a profile from the configuration file
