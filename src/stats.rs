@@ -69,12 +69,25 @@ fn calculate_entropy(password: &str) -> f64 {
 }
 
 pub fn print_stats<S: AsRef<str>>(data: &[S]) {
+    print_stats_to(data, false);
+}
+
+pub fn print_stats_to<S: AsRef<str>>(data: &[S], to_stderr: bool) {
     let pq = show_stats(data);
-    println!("\n{}", "Statistics:".blue().bold());
-    println!("Mean: {:.6}", pq.mean.to_string().yellow());
-    println!("Variance: {:.6}", pq.variance.to_string().yellow());
-    println!("Skewness: {:.6}", pq.skewness.to_string().yellow());
-    println!("Kurtosis: {:.6}", pq.kurtosis.to_string().yellow());
+    let lines = [
+        format!("\n{}", "Statistics:".blue().bold()),
+        format!("Mean: {:.6}", pq.mean.to_string().yellow()),
+        format!("Variance: {:.6}", pq.variance.to_string().yellow()),
+        format!("Skewness: {:.6}", pq.skewness.to_string().yellow()),
+        format!("Kurtosis: {:.6}", pq.kurtosis.to_string().yellow()),
+    ];
+    for line in lines {
+        if to_stderr {
+            eprintln!("{}", line);
+        } else {
+            println!("{}", line);
+        }
+    }
 }
 
 #[cfg(test)]
