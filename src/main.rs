@@ -122,6 +122,12 @@ fn build_cli() -> Command {
                 .action(ArgAction::SetTrue),
         )
         .arg(
+            Arg::new("no-ambiguous")
+                .long("no-ambiguous")
+                .help("Exclude ambiguous characters (0 O o 1 l I |)")
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
             Arg::new("stats")
                 .long("stats")
                 .help("Show statistics about the generated passwords")
@@ -246,6 +252,7 @@ fn build_cli() -> Command {
                 .args([
                     "pattern",
                     "avoid-repeating",
+                    "no-ambiguous",
                     "allowed",
                     "use-words",
                     "separator",
@@ -337,6 +344,9 @@ fn build_config(matches: &clap::ArgMatches) -> Result<PasswordGeneratorConfig> {
     }
     if matches.get_flag("avoid-repeating") {
         config.set_avoid_repeating(true);
+    }
+    if matches.get_flag("no-ambiguous") {
+        config.exclude_ambiguous();
     }
     if matches.value_source("seed") == Some(ValueSource::CommandLine) {
         config.seed = matches.get_one::<u64>("seed").copied();
@@ -945,6 +955,18 @@ mod cli_tests {
             .iter()
             .any(|c| !c.is_ascii_alphanumeric()));
     }
+    #[test]
+    fn test_cli_no_ambiguous_excludes_lookalikes() {
+        let matches = build_cli()
+            .try_get_matches_from(["npwg", "--no-ambiguous"])
+            .unwrap();
+        let config = build_config(&matches).unwrap();
+        let chars = effective_allowed_chars(&config).unwrap();
+        for c in config::AMBIGUOUS_CHARS {
+            assert!(!chars.contains(c));
+        }
+    }
+
     #[test]
     fn test_cli_parses_min_entropy() {
         let matches = build_cli()

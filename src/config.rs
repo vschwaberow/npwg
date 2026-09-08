@@ -8,6 +8,8 @@ use crate::error::{PasswordGeneratorError, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
+pub const AMBIGUOUS_CHARS: &[char] = &['0', 'O', 'o', '1', 'l', 'I', '|'];
+
 pub const DEFINE: &[(&str, &str)] = &[
     ("symbol1", "#%&?@"),
     ("symbol2", "!#$%&*+-./:=?@~"),
@@ -120,6 +122,10 @@ impl PasswordGeneratorConfig {
 
     pub fn set_avoid_repeating(&mut self, avoid: bool) {
         self.avoid_repetition = avoid;
+    }
+
+    pub fn exclude_ambiguous(&mut self) {
+        self.excluded_chars.extend(AMBIGUOUS_CHARS.iter().copied());
     }
 
     pub fn validate(&self) -> Result<()> {
@@ -276,5 +282,26 @@ mod tests {
 
         assert!(config.add_allowed_chars("").is_err());
         assert_eq!(config.allowed_chars, before_invalid);
+    }
+
+    #[test]
+    fn exclude_ambiguous_removes_lookalikes_from_effective_pool() {
+        use crate::generator::effective_allowed_chars;
+
+        let mut config = PasswordGeneratorConfig::new();
+        config.exclude_ambiguous();
+        let chars = effective_allowed_chars(&config).unwrap();
+        for c in AMBIGUOUS_CHARS {
+            assert!(!chars.contains(c), "ambiguous {c:?} still present");
+        }
+    }
+
+    #[test]
+    fn exclude_ambiguous_can_empty_small_charset() {
+        let mut config = PasswordGeneratorConfig::new();
+        config.clear_allowed_chars();
+        config.allowed_chars = AMBIGUOUS_CHARS.to_vec();
+        config.exclude_ambiguous();
+        assert!(config.validate().is_err());
     }
 }
