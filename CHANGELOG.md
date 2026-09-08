@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+### Added
+- `--min-entropy <BITS>` regenerates passwords until the character-class entropy estimate meets the threshold.
+
 ## [0.5.2]
 ### Fixed
 - Bumped transitive `aws-lc-sys` to 0.44.0 (via `aws-lc-rs`) to clear five Dependabot HIGH advisories.

@@ -5,8 +5,10 @@
 // Copyright (c) 2022 Volker Schwaberow
 
 use crate::config::PasswordGeneratorConfig;
+use crate::config::PasswordGeneratorMode;
 use crate::config::Separator;
 use crate::error::{PasswordGeneratorError, Result};
+use crate::strength::{charset_probe, estimate_entropy_bits, max_entropy_bits_for_probe};
 use argon2::{Algorithm, Argon2, Params, Version};
 use clap::ValueEnum;
 use rand::rngs::StdRng;
@@ -15,6 +17,9 @@ use rand::seq::IteratorRandom;
 use rand::{RngExt, SeedableRng};
 use std::collections::HashSet;
 use zeroize::Zeroize;
+
+const MIN_ENTROPY_MAX_ATTEMPTS: usize = 10_000;
+const DICEWARE_WORDLIST_SIZE: f64 = 7776.0;
 
 const DEFAULT_SEPARATORS: &[char] = &[
     'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's',
@@ -216,6 +221,74 @@ pub async fn generate_passwords(config: &PasswordGeneratorConfig) -> Result<Vec<
         passwords.push(generate_password(config).await?);
     }
     Ok(passwords)
+}
+
+pub fn ensure_min_entropy_feasible(config: &PasswordGeneratorConfig, min_bits: f64) -> Result<()> {
+    if min_bits <= 0.0 {
+        return Err(PasswordGeneratorError::InvalidConfig(
+            "--min-entropy must be greater than 0.".to_string(),
+        ));
+    }
+
+    let max_bits = match config.mode {
+        PasswordGeneratorMode::Diceware => config.length as f64 * DICEWARE_WORDLIST_SIZE.log2(),
+        PasswordGeneratorMode::Password => {
+            let allowed = effective_allowed_chars(config)?;
+            let probe = charset_probe(&allowed);
+            max_entropy_bits_for_probe(config.length, &probe)
+        }
+    };
+
+    if max_bits + 1e-9 < min_bits {
+        return Err(PasswordGeneratorError::InvalidConfig(format!(
+            "Requested --min-entropy {:.1} bits exceeds the maximum ≈ {:.1} bits for length {} with the current settings.",
+            min_bits, max_bits, config.length
+        )));
+    }
+    Ok(())
+}
+
+pub async fn generate_password_with_min_entropy(
+    config: &PasswordGeneratorConfig,
+    min_bits: f64,
+) -> Result<String> {
+    ensure_min_entropy_feasible(config, min_bits)?;
+    for _ in 0..MIN_ENTROPY_MAX_ATTEMPTS {
+        let mut password = if config.pronounceable {
+            generate_pronounceable_password(config).await?
+        } else {
+            generate_password(config).await?
+        };
+        if estimate_entropy_bits(&password) >= min_bits {
+            return Ok(password);
+        }
+        password.zeroize();
+    }
+    Err(PasswordGeneratorError::InvalidConfig(format!(
+        "Could not reach --min-entropy {:.1} bits within {} attempts.",
+        min_bits, MIN_ENTROPY_MAX_ATTEMPTS
+    )))
+}
+
+pub async fn generate_passwords_with_min_entropy(
+    config: &PasswordGeneratorConfig,
+    min_bits: f64,
+) -> Result<Vec<String>> {
+    ensure_min_entropy_feasible(config, min_bits)?;
+    let mut passwords = Vec::with_capacity(config.num_passwords);
+    for _ in 0..config.num_passwords {
+        passwords.push(generate_password_with_min_entropy(config, min_bits).await?);
+    }
+    Ok(passwords)
+}
+
+pub async fn generate_diceware_passphrase_with_min_entropy(
+    wordlist: &[String],
+    config: &PasswordGeneratorConfig,
+    min_bits: f64,
+) -> Result<Vec<String>> {
+    ensure_min_entropy_feasible(config, min_bits)?;
+    generate_diceware_passphrase(wordlist, config).await
 }
 
 pub async fn generate_diceware_passphrase(
@@ -521,6 +594,7 @@ fn append_mapped_chars(bytes: &[u8], alphabet: &[char], target_len: usize, outpu
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::strength::estimate_entropy_bits;
 
     #[test]
     fn test_generate_with_pattern_rejects_pattern_longer_than_length() {
@@ -650,5 +724,26 @@ mod tests {
         let config = PasswordGeneratorConfig::new();
         let err = mutate_password("", &config, 0, 1, None).unwrap_err();
         assert!(matches!(err, PasswordGeneratorError::InvalidConfig(_)));
+    }
+    #[tokio::test]
+    async fn test_min_entropy_rejects_impossible_threshold() {
+        let mut config = PasswordGeneratorConfig::new();
+        config.length = 8;
+        config.clear_allowed_chars();
+        config.allowed_chars = "0123456789".chars().collect();
+        let err = generate_password_with_min_entropy(&config, 80.0)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, PasswordGeneratorError::InvalidConfig(_)));
+    }
+
+    #[tokio::test]
+    async fn test_min_entropy_accepts_reachable_threshold() {
+        let mut config = PasswordGeneratorConfig::new();
+        config.length = 20;
+        let password = generate_password_with_min_entropy(&config, 80.0)
+            .await
+            .unwrap();
+        assert!(estimate_entropy_bits(&password) >= 80.0);
     }
 }
