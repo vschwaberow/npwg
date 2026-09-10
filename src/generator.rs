@@ -32,6 +32,12 @@ const ARGON2_T_COST: u32 = 3;
 const ARGON2_P_COST: u32 = 1;
 const DETERMINISTIC_BLOCK_LEN: usize = 64;
 
+#[derive(Debug, ValueEnum, Clone, Copy, PartialEq, Eq)]
+pub enum DeterministicVersion {
+    V1,
+    V2,
+}
+
 #[derive(Debug, ValueEnum, Clone)]
 pub enum MutationType {
     Replace,
@@ -124,27 +130,74 @@ pub fn generate_deterministic_password(
     length: usize,
     allowed_chars: &[char],
 ) -> Result<String> {
+    generate_deterministic_password_versioned(
+        master_password,
+        service,
+        username,
+        counter,
+        length,
+        allowed_chars,
+        DeterministicVersion::V1,
+    )
+}
+
+pub fn generate_deterministic_password_versioned(
+    master_password: &str,
+    service: &str,
+    username: Option<&str>,
+    counter: u32,
+    length: usize,
+    allowed_chars: &[char],
+    version: DeterministicVersion,
+) -> Result<String> {
     if allowed_chars.is_empty() {
         return Err(PasswordGeneratorError::InvalidConfig(
             "No characters available for deterministic generation.".to_string(),
         ));
     }
+    let max_alphabet_len = match version {
+        DeterministicVersion::V1 => 256,
+        DeterministicVersion::V2 => u32::MAX as usize,
+    };
+    if allowed_chars.len() > max_alphabet_len {
+        return Err(PasswordGeneratorError::InvalidConfig(format!(
+            "The selected deterministic version supports at most {max_alphabet_len} alphabet entries."
+        )));
+    }
 
     let mut output = String::with_capacity(length);
     let mut block_index: u32 = 0;
+    let mut produced_len = 0;
 
-    while output.len() < length {
-        let salt = build_salt(service, username, counter, block_index);
-        let mut block = derive_argon2_block(
-            master_password.as_bytes(),
-            salt.as_bytes(),
-            DETERMINISTIC_BLOCK_LEN,
-        )?;
-        append_mapped_chars(&block, allowed_chars, length, &mut output);
+    while produced_len < length {
+        let salt = match version {
+            DeterministicVersion::V1 => {
+                build_salt(service, username, counter, block_index).into_bytes()
+            }
+            DeterministicVersion::V2 => build_salt_v2(service, username, counter, block_index),
+        };
+        let mut block =
+            derive_argon2_block(master_password.as_bytes(), &salt, DETERMINISTIC_BLOCK_LEN)?;
+        match version {
+            DeterministicVersion::V1 => {
+                append_mapped_chars(&block, allowed_chars, length, &mut output);
+                produced_len = output.len();
+            }
+            DeterministicVersion::V2 => {
+                produced_len += append_mapped_chars_v2(
+                    &block,
+                    allowed_chars,
+                    length - produced_len,
+                    &mut output,
+                );
+            }
+        }
         block.zeroize();
-        block_index = block_index.checked_add(1).ok_or_else(|| {
-            PasswordGeneratorError::InvalidConfig("Counter overflow.".to_string())
-        })?;
+        if produced_len < length {
+            block_index = block_index.checked_add(1).ok_or_else(|| {
+                PasswordGeneratorError::InvalidConfig("Counter overflow.".to_string())
+            })?;
+        }
     }
 
     Ok(output)
@@ -770,6 +823,23 @@ fn build_salt(service: &str, username: Option<&str>, counter: u32, block_index: 
     }
 }
 
+fn build_salt_v2(service: &str, username: Option<&str>, counter: u32, block_index: u32) -> Vec<u8> {
+    let mut salt = b"npwg:v2\0".to_vec();
+    salt.extend_from_slice(&(service.len() as u64).to_be_bytes());
+    salt.extend_from_slice(service.as_bytes());
+    match username {
+        None => salt.push(0),
+        Some(username) => {
+            salt.push(1);
+            salt.extend_from_slice(&(username.len() as u64).to_be_bytes());
+            salt.extend_from_slice(username.as_bytes());
+        }
+    }
+    salt.extend_from_slice(&counter.to_be_bytes());
+    salt.extend_from_slice(&block_index.to_be_bytes());
+    salt
+}
+
 fn derive_argon2_block(password: &[u8], salt: &[u8], output_len: usize) -> Result<Vec<u8>> {
     let params = Params::new(
         ARGON2_M_COST_KIB,
@@ -804,10 +874,123 @@ fn append_mapped_chars(bytes: &[u8], alphabet: &[char], target_len: usize, outpu
     }
 }
 
+fn append_mapped_chars_v2(
+    bytes: &[u8],
+    alphabet: &[char],
+    remaining: usize,
+    output: &mut String,
+) -> usize {
+    let alphabet_len = alphabet.len() as u64;
+    let value_range = u64::from(u32::MAX) + 1;
+    let threshold = value_range / alphabet_len * alphabet_len;
+    let mut appended = 0;
+    for chunk in bytes.chunks_exact(4) {
+        if appended == remaining {
+            break;
+        }
+        let value = u64::from(u32::from_be_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
+        if value < threshold {
+            output.push(alphabet[(value % alphabet_len) as usize]);
+            appended += 1;
+        }
+    }
+    appended
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::strength::estimate_entropy_bits;
+
+    #[test]
+    fn deterministic_v2_salt_has_fixed_encoding() {
+        let expected = b"npwg:v2\0\x00\x00\x00\x00\x00\x00\x00\x02\xc3\xa4\x01\x00\x00\x00\x00\x00\x00\x00\x03\xe2\x82\xac\x01\x02\x03\x04\x05\x06\x07\x08";
+        assert_eq!(
+            build_salt_v2("ä", Some("€"), 0x01020304, 0x05060708),
+            expected
+        );
+    }
+
+    #[test]
+    fn deterministic_v2_salt_distinguishes_contexts() {
+        assert_eq!(
+            build_salt("a:b", Some("c"), 1, 0),
+            build_salt("a", Some("b:c"), 1, 0)
+        );
+        assert_ne!(
+            build_salt_v2("a:b", Some("c"), 1, 0),
+            build_salt_v2("a", Some("b:c"), 1, 0)
+        );
+        assert_ne!(
+            build_salt_v2("a:b", None, 1, 0),
+            build_salt_v2("a", Some("b"), 1, 0)
+        );
+        assert_ne!(
+            build_salt_v2("a", None, 1, 0),
+            build_salt_v2("a", Some(""), 1, 0)
+        );
+        assert_ne!(
+            build_salt_v2("a", Some("b"), 1, 0),
+            build_salt_v2("a", Some("b"), 2, 0)
+        );
+        assert_ne!(
+            build_salt_v2("a", Some("b"), 1, 0),
+            build_salt_v2("a", Some("b"), 1, 1)
+        );
+    }
+
+    #[test]
+    fn deterministic_v2_mapping_handles_alphabet_boundaries() {
+        for size in [1, 255, 256, 257] {
+            let alphabet: Vec<_> = (0..size)
+                .map(|i| char::from_u32(0x100 + i).unwrap())
+                .collect();
+            let mut output = String::new();
+            let count = append_mapped_chars_v2(&[0, 0, 1, 0], &alphabet, 1, &mut output);
+            assert_eq!(count, 1);
+            assert_eq!(output, alphabet[256 % size as usize].to_string());
+        }
+    }
+
+    #[test]
+    fn deterministic_v2_mapping_rejects_outside_threshold() {
+        for size in [255, 257] {
+            let alphabet: Vec<_> = (0..size)
+                .map(|i| char::from_u32(0x100 + i).unwrap())
+                .collect();
+            let mut output = String::new();
+            let bytes = [u32::MAX.to_be_bytes(), (u32::MAX - 1).to_be_bytes()].concat();
+            assert_eq!(append_mapped_chars_v2(&bytes, &alphabet, 2, &mut output), 1);
+            assert_eq!(output, alphabet[(size - 1) as usize].to_string());
+        }
+    }
+
+    #[test]
+    fn deterministic_v2_mapping_accepts_full_range_for_divisors() {
+        for size in [1, 256] {
+            let alphabet: Vec<_> = (0..size)
+                .map(|i| char::from_u32(0x100 + i).unwrap())
+                .collect();
+            let mut output = String::new();
+            assert_eq!(
+                append_mapped_chars_v2(&u32::MAX.to_be_bytes(), &alphabet, 1, &mut output),
+                1
+            );
+            assert_eq!(output, alphabet[(size - 1) as usize].to_string());
+        }
+    }
+
+    #[test]
+    fn deterministic_v2_mapping_limits_characters_and_preserves_entries() {
+        let mut output = "€".to_string();
+        assert_eq!(
+            append_mapped_chars_v2(&[0, 0, 0, 2, 0, 0, 0, 1], &['🔑', 'a', 'a'], 1, &mut output),
+            1
+        );
+        assert_eq!(output, "€a");
+        assert_eq!(append_mapped_chars_v2(&[0; 4], &['a'], 0, &mut output), 0);
+        assert_eq!(output, "€a");
+    }
 
     #[test]
     fn test_generate_with_pattern_rejects_pattern_longer_than_length() {

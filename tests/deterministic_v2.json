@@ -1,0 +1,44 @@
+[
+  {
+    "name": "ascii",
+    "username": "alice",
+    "length": 24,
+    "alphabet": "abc123!@#",
+    "expected": "@@32ca#22#13a!c@!3@2@@3!"
+  },
+  {
+    "name": "no_username",
+    "username": null,
+    "length": 8,
+    "alphabet": "abc123!@#",
+    "expected": "#@2#cb#1"
+  },
+  {
+    "name": "empty_username",
+    "username": "",
+    "length": 8,
+    "alphabet": "abc123!@#",
+    "expected": "@12b2!!3"
+  },
+  {
+    "name": "unicode",
+    "username": "alice",
+    "length": 17,
+    "alphabet": "ä€🔑",
+    "expected": "€€🔑€🔑ä🔑€€🔑ä🔑ää🔑€ä"
+  },
+  {
+    "name": "mixed_unicode",
+    "username": "alice",
+    "length": 17,
+    "alphabet": "aä€🔑",
+    "expected": "🔑€a€🔑€ä€€€a€🔑€€aa"
+  },
+  {
+    "name": "large_alphabet",
+    "username": "alice",
+    "length": 17,
+    "alphabet": "ĀāĂăĄąĆćĈĉĊċČčĎďĐđĒēĔĕĖėĘęĚěĜĝĞğĠġĢģĤĥĦħĨĩĪīĬĭĮįİıĲĳĴĵĶķĸĹĺĻļĽľĿŀŁłŃńŅņŇňŉŊŋŌōŎŏŐőŒœŔŕŖŗŘřŚśŜŝŞşŠšŢţŤťŦŧŨũŪūŬŭŮůŰűŲųŴŵŶŷŸŹźŻżŽžſƀƁƂƃƄƅƆƇƈƉƊƋƌƍƎƏƐƑƒƓƔƕƖƗƘƙƚƛƜƝƞƟƠơƢƣƤƥƦƧƨƩƪƫƬƭƮƯưƱƲƳƴƵƶƷƸƹƺƻƼƽƾƿǀǁǂǃǄǅǆǇǈǉǊǋǌǍǎǏǐǑǒǓǔǕǖǗǘǙǚǛǜǝǞǟǠǡǢǣǤǥǦǧǨǩǪǫǬǭǮǯǰǱǲǳǴǵǶǷǸǹǺǻǼǽǾǿȀ",
+    "expected": "ƳĪǩįźĥǧǠŸĜĄǉǄƆĴĐƦ"
+  }
+]

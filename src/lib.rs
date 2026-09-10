@@ -20,9 +20,10 @@ pub mod tests;
 pub use config::{PasswordGeneratorConfig, PasswordGeneratorMode};
 pub use error::{PasswordGeneratorError, Result};
 pub use generator::{
-    effective_allowed_chars, generate_deterministic_password, generate_diceware_passphrase,
-    generate_password, generate_passwords, generate_pronounceable_password,
-    generate_pronounceable_passwords,
+    effective_allowed_chars, generate_deterministic_password,
+    generate_deterministic_password_versioned, generate_diceware_passphrase, generate_password,
+    generate_passwords, generate_pronounceable_password, generate_pronounceable_passwords,
+    DeterministicVersion,
 };
 pub use stats::{show_stats, PasswordQuality};
 
