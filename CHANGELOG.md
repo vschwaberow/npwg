@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 
 ## [Unreleased]
 
+### Added
+- Versioned deterministic library API with `DeterministicVersion::V1` and `DeterministicVersion::V2`.
+- Deterministic v2 derivation with unambiguous salt fields, Unicode character lengths, and support for alphabets larger than 256 entries.
+- Fixed v1 and v2 password vectors, salt encoding tests, and alphabet boundary tests.
+
+### Changed
+- Add `--deterministic-version v1` to existing deterministic commands to reproduce previous passwords. The CLI now requires an explicit version.
+- Select `--deterministic-version v2` for new passwords. Changing the version requires a password change at the service.
+
+### Fixed
+- Deterministic v1 rejects alphabets larger than 256 entries instead of continuing without output. Its existing password outputs remain unchanged.
+
 ## [0.5.3] - 2026-09-08
 ### Added
 - `--min-entropy <BITS>` regenerates passwords until the character-class entropy estimate meets the threshold.
