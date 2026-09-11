@@ -4,17 +4,6 @@
 // Author: Volker Schwaberow <volker@schwaberow.de>
 // Copyright (c) 2022 Volker Schwaberow
 
-mod config;
-mod diceware;
-mod error;
-mod generator;
-mod interactive;
-mod policy;
-mod profile;
-mod pwned;
-mod stats;
-mod strength;
-
 const DAEMONIZE_ARG: &str = "__internal_daemonize";
 const CLIPBOARD_DAEMON_HOLD_SECS: u64 = 45;
 
@@ -34,11 +23,14 @@ use config::{PasswordGeneratorConfig, PasswordGeneratorMode, Separator};
 use dialoguer::{Input, Password};
 use error::{PasswordGeneratorError, Result};
 use generator::{
-    effective_allowed_chars, generate_deterministic_password,
-    generate_deterministic_password_versioned, generate_diceware_passphrase,
-    generate_diceware_passphrase_with_min_entropy, generate_passwords_with_min_entropy,
-    generate_passwords_with_min_entropy_and_wordlist, generate_passwords_with_wordlist,
-    generate_pronounceable_passwords, mutate_password, DeterministicVersion, MutationType,
+    effective_allowed_chars, generate_deterministic_password_versioned,
+    generate_diceware_passphrase, generate_diceware_passphrase_with_min_entropy,
+    generate_passwords_with_min_entropy, generate_passwords_with_min_entropy_and_wordlist,
+    generate_passwords_with_wordlist, generate_pronounceable_passwords, mutate_password,
+    DeterministicVersion, MutationType,
+};
+use npwg::{
+    config, diceware, error, generator, interactive, policy, profile, pwned, stats, strength,
 };
 use policy::{apply_policy, PolicyName};
 use profile::{apply_allowed_sets, apply_profile, load_user_profiles, parse_separator};
@@ -46,12 +38,6 @@ use qrcodegen::{QrCode, QrCodeEcc};
 use stats::{print_stats, print_stats_to};
 use strength::{print_strength_meter, print_strength_meter_to};
 use zeroize::{Zeroize, Zeroizing};
-
-impl From<arboard::Error> for PasswordGeneratorError {
-    fn from(error: arboard::Error) -> Self {
-        PasswordGeneratorError::ClipboardError(error.to_string())
-    }
-}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -649,25 +635,15 @@ async fn handle_deterministic(
         let current_counter = counter.checked_add(index as u32).ok_or_else(|| {
             PasswordGeneratorError::InvalidConfig("Counter overflow.".to_string())
         })?;
-        let password = match version {
-            DeterministicVersion::V1 => generate_deterministic_password(
-                master_password.as_str(),
-                service,
-                username,
-                current_counter,
-                config.length,
-                &allowed_chars,
-            ),
-            DeterministicVersion::V2 => generate_deterministic_password_versioned(
-                master_password.as_str(),
-                service,
-                username,
-                current_counter,
-                config.length,
-                &allowed_chars,
-                version,
-            ),
-        }?;
+        let password = generate_deterministic_password_versioned(
+            master_password.as_str(),
+            service,
+            username,
+            current_counter,
+            config.length,
+            &allowed_chars,
+            version,
+        )?;
         passwords.push(password);
     }
 
