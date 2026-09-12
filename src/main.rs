@@ -4,17 +4,6 @@
 // Author: Volker Schwaberow <volker@schwaberow.de>
 // Copyright (c) 2022 Volker Schwaberow
 
-mod config;
-mod diceware;
-mod error;
-mod generator;
-mod interactive;
-mod policy;
-mod profile;
-mod pwned;
-mod stats;
-mod strength;
-
 const DAEMONIZE_ARG: &str = "__internal_daemonize";
 const CLIPBOARD_DAEMON_HOLD_SECS: u64 = 45;
 
@@ -34,10 +23,14 @@ use config::{PasswordGeneratorConfig, PasswordGeneratorMode, Separator};
 use dialoguer::{Input, Password};
 use error::{PasswordGeneratorError, Result};
 use generator::{
-    effective_allowed_chars, generate_deterministic_password, generate_diceware_passphrase,
-    generate_diceware_passphrase_with_min_entropy, generate_passwords_with_min_entropy,
-    generate_passwords_with_min_entropy_and_wordlist, generate_passwords_with_wordlist,
-    generate_pronounceable_passwords, mutate_password, MutationType,
+    effective_allowed_chars, generate_deterministic_password_versioned,
+    generate_diceware_passphrase, generate_diceware_passphrase_with_min_entropy,
+    generate_passwords_with_min_entropy, generate_passwords_with_min_entropy_and_wordlist,
+    generate_passwords_with_wordlist, generate_pronounceable_passwords, mutate_password,
+    DeterministicVersion, MutationType,
+};
+use npwg::{
+    config, diceware, error, generator, interactive, policy, profile, pwned, stats, strength,
 };
 use policy::{apply_policy, PolicyName};
 use profile::{apply_allowed_sets, apply_profile, load_user_profiles, parse_separator};
@@ -45,12 +38,6 @@ use qrcodegen::{QrCode, QrCodeEcc};
 use stats::{print_stats, print_stats_to};
 use strength::{print_strength_meter, print_strength_meter_to};
 use zeroize::{Zeroize, Zeroizing};
-
-impl From<arboard::Error> for PasswordGeneratorError {
-    fn from(error: arboard::Error) -> Self {
-        PasswordGeneratorError::ClipboardError(error.to_string())
-    }
-}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -357,6 +344,7 @@ fn build_cli() -> Command {
                 .long("deterministic")
                 .help("Generate passwords deterministically from a master password and service")
                 .action(ArgAction::SetTrue)
+                .requires("deterministic-version")
                 .conflicts_with_all([
                     "use-words",
                     "separator",
@@ -366,6 +354,15 @@ fn build_cli() -> Command {
                     "pattern",
                     "min-entropy",
                 ]),
+        )
+        .arg(
+            Arg::new("deterministic-version")
+                .long("deterministic-version")
+                .value_name("VERSION")
+                .help("Derivation version: v1 for existing passwords, v2 for new passwords (required)")
+                .value_parser(value_parser!(DeterministicVersion))
+                .requires("deterministic")
+                .conflicts_with("interactive"),
         )
         .arg(
             Arg::new("service")
@@ -617,6 +614,13 @@ async fn handle_deterministic(
         .as_str();
     let username = matches.get_one::<String>("username").map(|s| s.as_str());
     let counter = *matches.get_one::<u32>("counter").unwrap_or(&1);
+    let version = *matches
+        .get_one::<DeterministicVersion>("deterministic-version")
+        .ok_or_else(|| {
+            PasswordGeneratorError::InvalidConfig(
+                "Select --deterministic-version v1 or v2.".to_string(),
+            )
+        })?;
 
     let master_password = Zeroizing::new(
         Password::new()
@@ -631,13 +635,14 @@ async fn handle_deterministic(
         let current_counter = counter.checked_add(index as u32).ok_or_else(|| {
             PasswordGeneratorError::InvalidConfig("Counter overflow.".to_string())
         })?;
-        let password = generate_deterministic_password(
+        let password = generate_deterministic_password_versioned(
             master_password.as_str(),
             service,
             username,
             current_counter,
             config.length,
             &allowed_chars,
+            version,
         )?;
         passwords.push(password);
     }
@@ -996,6 +1001,81 @@ mod cli_tests {
     use std::io::Write;
 
     use tempfile::NamedTempFile;
+
+    #[test]
+    fn test_cli_parses_explicit_deterministic_versions() {
+        for (value, expected) in [
+            ("v1", DeterministicVersion::V1),
+            ("v2", DeterministicVersion::V2),
+        ] {
+            let matches = build_cli()
+                .try_get_matches_from([
+                    "npwg",
+                    "--deterministic",
+                    "--deterministic-version",
+                    value,
+                    "--service",
+                    "example.com",
+                ])
+                .unwrap();
+            assert_eq!(
+                matches.get_one::<DeterministicVersion>("deterministic-version"),
+                Some(&expected)
+            );
+        }
+    }
+
+    #[test]
+    fn test_cli_deterministic_requires_explicit_version() {
+        let error = build_cli()
+            .try_get_matches_from(["npwg", "--deterministic", "--service", "example.com"])
+            .unwrap_err();
+        assert_eq!(
+            error.kind(),
+            clap::error::ErrorKind::MissingRequiredArgument
+        );
+        assert!(error.to_string().contains("--deterministic-version"));
+    }
+
+    #[test]
+    fn test_cli_deterministic_version_requires_mode() {
+        let error = build_cli()
+            .try_get_matches_from(["npwg", "--deterministic-version", "v2"])
+            .unwrap_err();
+        assert_eq!(
+            error.kind(),
+            clap::error::ErrorKind::MissingRequiredArgument
+        );
+    }
+
+    #[test]
+    fn test_cli_rejects_unknown_deterministic_version() {
+        let error = build_cli()
+            .try_get_matches_from([
+                "npwg",
+                "--deterministic",
+                "--deterministic-version",
+                "v3",
+                "--service",
+                "example.com",
+            ])
+            .unwrap_err();
+        assert_eq!(error.kind(), clap::error::ErrorKind::InvalidValue);
+    }
+
+    #[test]
+    fn test_cli_deterministic_version_conflicts_with_interactive() {
+        let error = build_cli()
+            .try_get_matches_from([
+                "npwg",
+                "--deterministic",
+                "--deterministic-version",
+                "v2",
+                "--interactive",
+            ])
+            .unwrap_err();
+        assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
 
     #[test]
     fn test_cli_parses_pattern_and_seed() {

@@ -100,6 +100,7 @@ npwg [OPTIONS]
 - `--copy`: Copy the generated password to the clipboard
 - `--qr`: Print the generated passwords as QR codes
 - `--deterministic`: Generate passwords deterministically from a master password and service
+- `--deterministic-version <VERSION>`: Required with `--deterministic`: `v1` for existing passwords, `v2` for new passwords
 - `-S, --service <SERVICE>`: Service or context name used as salt for deterministic generation
 - `-u, --username <USERNAME>`: Optional username for deterministic generation
 - `--counter <COUNTER>`: Counter for deterministic generation [default: 1]
@@ -225,17 +226,67 @@ npwg --mutate --mutation-type swap --mutation-strength 2 --lengthen 3
 
 #### Deterministic Mode
 
-Derive a stable password from a master password and service context (no randomness):
+For a new password, select version `v2`:
 
 ```sh
-npwg --deterministic --service example.com --length 24
+npwg --deterministic --deterministic-version v2 --service example.com --length 24
 ```
 
 Include an optional username and counter to create distinct variants:
 
 ```sh
-npwg --deterministic --service example.com --username alice --counter 2 --length 24
+npwg --deterministic --deterministic-version v2 --service example.com --username alice --counter 2 --length 24
 ```
+
+To reproduce a password from an earlier release, select `v1`:
+
+```sh
+npwg --deterministic --deterministic-version v1 --service example.com --length 24
+```
+
+The CLI requires an explicit version and has no default. Existing commands must add `--deterministic-version v1` to reproduce their previous passwords.
+Version `v2` changes the derivation. A switch to `v2` requires a password change at the service.
+
+Record the version, service, username, counter, length, and ordered alphabet for each password.
+Keep the master password secret. The same inputs and version reproduce the same password.
+
+Version `v1` preserves the previous salt format and UTF-8 byte counting, including its Unicode length behavior.
+Its colon-separated salt can map different service and username pairs to the same password.
+For example, service `a:b` with username `c` shares a salt with service `a` and username `b:c`.
+Version `v1` now rejects alphabets with more than 256 entries instead of continuing without output.
+
+Version `v2` separates each input field and counts Unicode scalar values (`char` in Rust).
+It supports alphabets with up to `u32::MAX` entries. Both versions preserve alphabet order and duplicate entries.
+Inputs are not normalized or trimmed. An absent username differs from an empty username in `v2`.
+
+The library function `generate_deterministic_password(...)` remains a `v1` call.
+For explicit selection, call `generate_deterministic_password_versioned(...)` with the same six arguments and a final `DeterministicVersion::V1` or `DeterministicVersion::V2` argument.
+Both versions reject an empty alphabet. With a valid alphabet, library calls with length zero return an empty string without derivation.
+
+<details>
+<summary>Version 2 derivation format</summary>
+
+The salt contains these fields in order. All integers use big-endian encoding.
+
+| Field | Encoding |
+|---|---|
+| Version prefix | Eight bytes: `npwg:v2` followed by a zero byte |
+| Service | UTF-8 byte length as `u64`, then UTF-8 bytes |
+| Absent username | One zero byte |
+| Present username | Byte `1`, UTF-8 byte length as `u64`, then UTF-8 bytes |
+| Counter | `u32` |
+| Block index | `u32`, starting at zero |
+
+Both versions use Argon2id version `0x13`, 65,536 KiB memory, three iterations, parallelism one, and 64 output bytes per block.
+The master password supplies the UTF-8 password bytes to Argon2id.
+
+Version `v2` reads each block as sixteen big-endian `u32` values.
+For alphabet size `n`, it accepts values less than `floor(2^32 / n) * n` and selects entry `value % n`.
+It derives another block only if the requested character count is incomplete.
+
+Fixed test vectors cover both versions, including Unicode and multiple blocks. The v2 vectors also cover a 257-entry alphabet.
+
+</details>
 
 Use interactive mode for guided password, passphrase, and mutation prompts. Pattern prompts use `L`/`D`/`S` templates (not literal strings); charset, policy, and profile stay on the CLI:
 

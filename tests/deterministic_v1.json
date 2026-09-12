@@ -1,0 +1,44 @@
+[
+  {
+    "alphabet": "abc123!@#",
+    "expected": "@!cbb!#cccba!31!2##cc2#c",
+    "length": 24,
+    "name": "ascii",
+    "username": "alice"
+  },
+  {
+    "alphabet": "abc123!@#",
+    "expected": "c!!bb@c1a31c@@c21ba!2!a1",
+    "length": 24,
+    "name": "no_username",
+    "username": null
+  },
+  {
+    "alphabet": "abc123!@#",
+    "expected": "c3c#!33@2@1bb3#c@##ca3a@",
+    "length": 24,
+    "name": "empty_username",
+    "username": ""
+  },
+  {
+    "alphabet": "ä€🔑",
+    "expected": "€ä🔑€€ä",
+    "length": 17,
+    "name": "unicode",
+    "username": "alice"
+  },
+  {
+    "alphabet": "aä€🔑",
+    "expected": "🔑a🔑€🔑🔑",
+    "length": 17,
+    "name": "mixed_unicode",
+    "username": "alice"
+  },
+  {
+    "alphabet": "abc123!@#",
+    "expected": "@!cbb!#cccba!31!2##cc2#c22cb@33213!1@@3@!cab@3!b32a2cb!3###@b#!b@!bc1a@2a#322!2a",
+    "length": 80,
+    "name": "multiple_blocks",
+    "username": "alice"
+  }
+]
